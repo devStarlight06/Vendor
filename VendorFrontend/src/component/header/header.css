@@ -1,0 +1,60 @@
+/* ===== HEADER WRAPPER ===== */
+.header-motion {
+  position: fixed;        /* 🔥 FIXED HEADER */
+  top: 0;
+  left: 0;
+  width: 100%;
+  z-index: 1200;
+}
+
+/* ===== MAIN HEADER ===== */
+.main-header {
+  height: 60px;
+  background: #ffffff;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  padding: 0;
+}
+
+/* ===== LOGO ===== */
+.brand {
+  display: flex;
+  align-items: center;
+}
+
+.brand-logo {
+  height: 42px;
+  width: auto;
+  object-fit: contain;
+}
+
+/* ===== NAV LINKS ===== */
+.nav-links .nav-link {
+  margin-left: 18px;
+  font-weight: 500;
+  color: #111827;
+}
+
+.nav-links .nav-link:hover {
+  color: #2563eb;
+}
+
+/* ===== MOBILE MENU TOGGLE ===== */
+.menu-toggle {
+  border: none;
+  font-size: 20px;
+}
+
+.menu-toggle:focus {
+  box-shadow: none;
+}
+
+/* ===== MOBILE MENU FIX ===== */
+@media (max-width: 991px) {
+  .navbar-collapse {
+    background: #ffffff;
+    padding: 16px;
+    margin-top: 10px;
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+  }
+}

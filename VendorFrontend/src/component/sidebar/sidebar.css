@@ -1,0 +1,153 @@
+/* ===== MOBILE HEADER ===== */
+.mobile-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 60px;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  z-index: 1200;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+}
+
+.logo {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.menu-icon {
+  font-size: 22px;
+  cursor: pointer;
+}
+
+/* ===== SIDEBAR ===== */
+.sidebar {
+  width: 280px;
+  height: 100vh;
+  margin-top: 65px;
+  background: #0f172a;
+  color: #fff;
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 1300;
+  padding: 20px;
+}
+
+/* MOBILE: slide from RIGHT */
+.sidebar.mobile {
+  left: auto;
+  right: 0;
+}
+
+/* ===== HEADER ===== */
+.sidebar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 30px;
+}
+
+.close-btn {
+  font-size: 20px;
+  cursor: pointer;
+}
+
+/* ===== MENU ===== */
+.sidebar-menu a {
+  color: #cbd5f5;
+  padding: 12px 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 15px;
+}
+
+.sidebar-menu a:hover {
+  color: #fff;
+}
+
+/* ===== OVERLAY ===== */
+.sidebar-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 1200;
+}
+
+/* ===== DESKTOP ===== */
+@media (min-width: 992px) {
+  .mobile-header {
+    display: none;
+  }
+}
+/* Sidebar container */
+.sidebar {
+  width: 260px;
+  height: 100vh;
+  background: linear-gradient(180deg, #0f172a, #020617);
+  color: #fff;
+  padding: 20px;
+}
+
+/* Header */
+.sidebar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 30px;
+}
+
+/* ===== MENU FIX ===== */
+.sidebar-menu {
+  display: flex;
+  flex-direction: column !important; /* FORCE COLUMN */
+  gap: 18px;
+}
+
+/* Each link one full row */
+.sidebar-menu .nav-link {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: #cbd5f5;
+  padding: 12px 16px;
+  border-radius: 10px;
+  font-size: 16px;
+  width: 100%;               /* FULL ROW */
+  transition: all 0.3s ease;
+}
+
+/* Hover effect */
+.sidebar-menu .nav-link:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+/* Icon size */
+.sidebar-menu svg {
+  font-size: 18px;
+}
+
+/* Mobile sidebar */
+.sidebar.mobile {
+  position: fixed;
+  right: 0;
+  top: 0;
+  z-index: 1001;
+}
+
+.sidebar-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 998;
+}
+
+.sidebar {
+  z-index: 999;
+}

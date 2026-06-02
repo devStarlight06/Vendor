@@ -1,0 +1,99 @@
+/* =========================
+   LOGIN PAGE BACKGROUND
+========================= */
+.login-page {
+  background: linear-gradient(135deg, #0f172a, #020617);
+}
+
+/* =========================
+   LOGIN CARD
+========================= */
+.login-card {
+  border: none;
+  border-radius: 20px;
+  padding: 30px;
+  background: #ffffff;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+}
+
+/* =========================
+   HEADER
+========================= */
+.login-header {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.login-icon {
+  font-size: 42px;
+  color: #2563eb;
+  margin-bottom: 10px;
+}
+
+.login-header h4 {
+  margin-bottom: 5px;
+  font-weight: 700;
+}
+
+.login-header p {
+  color: #6b7280;
+  font-size: 14px;
+}
+
+/* =========================
+   INPUT ICON
+========================= */
+.input-icon {
+  position: relative;
+}
+
+.input-icon svg {
+  position: absolute;
+  top: 50%;
+  left: 12px;
+  transform: translateY(-50%);
+  color: #9ca3af;
+}
+
+.input-icon input {
+  padding-left: 40px;
+  height: 48px;
+  border-radius: 10px;
+}
+
+/* =========================
+   BUTTON
+========================= */
+.login-btn {
+  height: 48px;
+  border-radius: 12px;
+  font-weight: 600;
+  background: linear-gradient(135deg, #2563eb, #1e40af);
+  border: none;
+}
+
+.login-btn:hover {
+  background: linear-gradient(135deg, #1e40af, #1d4ed8);
+}
+
+/* =========================
+   LINKS
+========================= */
+.forgot-link {
+  font-size: 14px;
+  text-decoration: none;
+  color: #2563eb;
+}
+
+.forgot-link:hover {
+  text-decoration: underline;
+}
+
+/* =========================
+   MOBILE
+========================= */
+@media (max-width: 576px) {
+  .login-card {
+    padding: 24px;
+  }
+}

@@ -1,0 +1,17 @@
+.table-wrapper {
+  background: #ffffff;
+  padding: 20px;
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+}
+
+.customers-table th {
+  background: #f8fafc;
+  font-weight: 600;
+}
+
+@media (max-width: 576px) {
+  .table-wrapper {
+    padding: 14px;
+  }
+}

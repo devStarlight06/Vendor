@@ -1,0 +1,40 @@
+/* =========================
+   TABLE WRAPPER
+========================= */
+.table-wrapper {
+  background: #ffffff;
+  padding: 20px;
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+}
+
+/* =========================
+   TABLE
+========================= */
+.product-table th {
+  background: #f1f5f9;
+  font-weight: 600;
+}
+
+.product-table td,
+.product-table th {
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+/* =========================
+   ACTION BUTTONS
+========================= */
+.action-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+/* =========================
+   MOBILE
+========================= */
+@media (max-width: 576px) {
+  .table-wrapper {
+    padding: 14px;
+  }
+}

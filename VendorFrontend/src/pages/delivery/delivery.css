@@ -1,0 +1,63 @@
+/* ===== DELIVERY CARDS ===== */
+.delivery-card {
+  padding: 24px !important;
+  border-radius: 18px !important;
+  text-align: center;
+  border: none !important;
+  color: #fff;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.15);
+  transition: transform 0.3s ease;
+}
+
+/* Delivered */
+.delivery-card.delivered {
+  background: linear-gradient(135deg, #16a34a, #22c55e) !important;
+}
+
+/* Pending */
+.delivery-card.pending {
+  background: linear-gradient(135deg, #f59e0b, #fbbf24) !important;
+}
+
+/* Icon */
+.delivery-card .icon {
+  font-size: 34px;
+  margin-bottom: 10px;
+}
+
+/* Title */
+.delivery-card h6 {
+  margin-top: 8px;
+  font-size: 15px;
+  opacity: 0.9;
+}
+
+/* Count */
+.delivery-card h3 {
+  font-size: 34px;
+  font-weight: 700;
+  margin-top: 6px;
+}
+
+/* ===== TABLE ===== */
+.table-wrapper {
+  background: #ffffff;
+  padding: 20px;
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+}
+.delivery-card.cancelled {
+  background: #ffe5e5;
+  color: #b02a37;
+}
+
+/* ===== MOBILE ===== */
+@media (max-width: 576px) {
+  .delivery-card {
+    padding: 18px !important;
+  }
+
+  .delivery-card h3 {
+    font-size: 28px;
+  }
+}

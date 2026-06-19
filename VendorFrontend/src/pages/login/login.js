@@ -16,6 +16,8 @@ import { useNavigate } from "react-router-dom";
 
 import "./login.css";
 
+const REACT_APP_API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5001/api";
+
 const Login = () => {
   const navigate = useNavigate();
 
@@ -31,7 +33,7 @@ const Login = () => {
 
     try {
       const res = await axios.post(
-        "http://localhost:5001/api/vendor/login",  // Changed port and endpoint
+        `${REACT_APP_API_BASE}/vendor/login`,  // Changed port and endpoint
         { email, password }
       );
 

@@ -21,9 +21,9 @@ const Header = () => {
           <Navbar expand="lg" className="main-header">
             <Container fluid>
               {/* Logo */}
-              <Navbar.Brand href="/" className="brand">
+              {/* <Navbar.Brand href="/" className="brand">
                 <img src="/images/image.png" alt="Logo" className="brand-logo" />
-              </Navbar.Brand>
+              </Navbar.Brand> */}
 
               {/* Mobile Toggle */}
               <Navbar.Toggle aria-controls="nav-menu" className="menu-toggle">

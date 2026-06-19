@@ -7,7 +7,8 @@ import "./order.css";
 import Header from "../../component/header/header";
 import Sidebar from "../../component/sidebar/sidebar";
 
-const API = "http://localhost:5001/api/orders/my-orders";
+const REACT_APP_API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5001/api";
+const API = `${REACT_APP_API_BASE}/orders/my-orders`;
 
 const Order = () => {
   const [orders, setOrders] = useState([]);

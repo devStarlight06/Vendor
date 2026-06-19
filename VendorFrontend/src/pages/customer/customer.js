@@ -7,7 +7,7 @@ import "./customer.css";
 
 /* ---------------- MOCK CUSTOMERS ---------------- */
 
-
+const apiUrl = process.env.REACT_APP_API_BASE || "http://localhost:5001/api";
 const Customer = () => {
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -15,7 +15,7 @@ const Customer = () => {
   /* ---------------- LOAD MOCK DATA ---------------- */
  useEffect(() => {
   const fetchCustomers = async () => {
-    const res = await fetch("http://localhost:5001/api/orders/my-customers", {
+    const res = await fetch(`${apiUrl}/orders/my-customers`, {
       headers: {
         Authorization: `Bearer ${localStorage.getItem("token")}`,
       },

@@ -14,7 +14,7 @@ import { FaTruck, FaClock, FaTimesCircle } from "react-icons/fa";
 import Header from "../../component/header/header";
 import Sidebar from "../../component/sidebar/sidebar";
 import "./delivery.css";
-
+const REACT_APP_API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5001/api";
 const Delivery = () => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -23,7 +23,7 @@ const Delivery = () => {
   useEffect(() => {
     const fetchOrders = async () => {
       try {
-        const res = await fetch("http://localhost:5001/api/orders/my-orders", {
+        const res = await fetch(`${REACT_APP_API_BASE}/orders/my-orders`, {
           headers: {
             Authorization: `Bearer ${localStorage.getItem("token")}`,
           },

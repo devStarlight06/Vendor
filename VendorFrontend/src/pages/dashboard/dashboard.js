@@ -20,7 +20,7 @@ import Header from "../../component/header/header";
 import Sidebar from "../../component/sidebar/sidebar";
 import Earnings from "../../component/Earnings/Earnings";
 import "./dashboard.css";
-
+const REACT_APP_API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5001/api";
 const Dashboard = () => {
   const [orders, setOrders] = useState([]);
   const [earnings, setEarnings] = useState([]);
@@ -36,10 +36,10 @@ const Dashboard = () => {
         const token = localStorage.getItem("token");
 
         const [ordersRes, earningsRes] = await Promise.all([
-          fetch("http://localhost:5001/api/orders/my-orders", {
+          fetch(`${REACT_APP_API_BASE}/orders/my-orders`, {
             headers: { Authorization: `Bearer ${token}` },
           }),
-          fetch("http://localhost:5001/api/orders/my-earnings", {
+          fetch(`${REACT_APP_API_BASE}/orders/my-earnings`, {
             headers: { Authorization: `Bearer ${token}` },
           }),
         ]);

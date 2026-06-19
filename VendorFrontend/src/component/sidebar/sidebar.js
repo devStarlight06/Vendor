@@ -11,7 +11,12 @@ import {
   FaWarehouse,
   FaBars,
   FaTimes,
+  FaTag,
+  FaBell,
+  FaStar,
+  FaCog,
 } from "react-icons/fa";
+import { MdNotificationsActive, MdRateReview } from "react-icons/md";
 import { NavLink } from "react-router-dom";
 import "./sidebar.css";
 
@@ -72,33 +77,60 @@ const Sidebar = () => {
             </div>
 
             <Nav className="sidebar-menu flex-column">
+              {/* Dashboard */}
               <NavLink to="/dashboard" className="nav-link" onClick={handleClose}>
                 <FaTachometerAlt /> Dashboard
               </NavLink>
 
+              {/* Products */}
               <NavLink to="/product" className="nav-link" onClick={handleClose}>
                 <FaBox /> Products
               </NavLink>
 
+              {/* Categories */}
               <NavLink to="/categories" className="nav-link" onClick={handleClose}>
                 <FaList /> Categories
               </NavLink>
 
+              {/* Coupons - NEW */}
+              <NavLink to="/coupon" className="nav-link" onClick={handleClose}>
+                <FaTag /> Coupons
+              </NavLink>
+
+              {/* Orders */}
               <NavLink to="/order" className="nav-link" onClick={handleClose}>
                 <FaShoppingCart /> Orders
               </NavLink>
 
+              {/* Customers */}
               <NavLink to="/customer" className="nav-link" onClick={handleClose}>
                 <FaUsers /> Customers
               </NavLink>
 
-              {/* <NavLink to="/payment" className="nav-link" onClick={handleClose}>
-                <FaMoneyBill /> Payments
-              </NavLink> */}
+              {/* Notifications - NEW */}
+              <NavLink to="/notification" className="nav-link" onClick={handleClose}>
+                <MdNotificationsActive /> Notifications
+              </NavLink>
 
+              {/* Reviews - NEW */}
+              <NavLink to="/review" className="nav-link" onClick={handleClose}>
+                <MdRateReview /> Reviews
+              </NavLink>
+
+              {/* Delivery */}
               <NavLink to="/delivery" className="nav-link" onClick={handleClose}>
                 <FaWarehouse /> Delivery
               </NavLink>
+
+              {/* Settings - NEW */}
+              <NavLink to="/settings" className="nav-link" onClick={handleClose}>
+                <FaCog /> Settings
+              </NavLink>
+
+              {/* Payment (Commented) */}
+              {/* <NavLink to="/payment" className="nav-link" onClick={handleClose}>
+                <FaMoneyBill /> Payments
+              </NavLink> */}
             </Nav>
           </motion.aside>
         )}

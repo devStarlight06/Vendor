@@ -2,14 +2,14 @@ import { useEffect, useState } from "react";
 import { Container, Table, Card } from "react-bootstrap";
 import Header from "../../component/header/header";
 import Sidebar from "../../component/sidebar/sidebar";
-
+const REACT_APP_API_BASE = process.env.REACT_APP_API_BASE ;
 const Earnings = () => {
   const [data, setData] = useState([]);
   const formatPrice = (amount) => `₹${Number(amount).toLocaleString("en-IN")}`;
 
   useEffect(() => {
     const fetchEarnings = async () => {
-      const res = await fetch("http://localhost:5001/api/orders/my-earnings", {
+      const res = await fetch(`${REACT_APP_API_BASE}/orders/my-earnings`, {
         headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }
       });
       const result = await res.json();

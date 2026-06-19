@@ -3,7 +3,7 @@ import { Container, Card, Spinner, Row, Col, Badge } from "react-bootstrap";
 import Header from "../../component/header/header";
 import Sidebar from "../../component/sidebar/sidebar";
 
-const API_BASE = "http://localhost:5001/api/products";
+const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5001/api";
 
 const VendorCategories = () => {
   const [categories, setCategories] = useState([]);
@@ -14,7 +14,7 @@ const VendorCategories = () => {
       try {
         const token = localStorage.getItem("token");
 
-        const res = await fetch(`${API_BASE}/my-categories`, {
+        const res = await fetch(`${API_BASE}/products/my-categories`, {
           headers: { Authorization: `Bearer ${token}` },
         });
 

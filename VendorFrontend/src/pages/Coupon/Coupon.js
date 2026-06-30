@@ -26,10 +26,10 @@ import {
 import Header from "../../component/header/header";
 import Sidebar from "../../component/sidebar/sidebar";
 
-// const API_URL = "http://localhost:5001/api/coupons"; // Your backend URL
-// const PRODUCT_API_URL = "http://localhost:5001/api/products"; // To fetch vendor products
-const API_URL = process.env.REACT_APP_API_BASE + "/coupons"; // Use environment variable for API base URL
-const PRODUCT_API_URL = process.env.REACT_APP_API_BASE + "/products"; // Use environment variable for API base URL
+// Keep your existing API URL configuration
+const API_URL = process.env.REACT_APP_API_BASE + "/coupons";
+const PRODUCT_API_URL = process.env.REACT_APP_API_BASE + "/products";
+
 const Coupon = () => {
   const [coupons, setCoupons] = useState([]);
   const [products, setProducts] = useState([]);
@@ -60,11 +60,12 @@ const Coupon = () => {
       const res = await axios.get(API_URL, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      setCoupons(res.data.coupons);
+      // Fix: Handle response structure properly
+      setCoupons(res.data.coupons || res.data || []);
       setError("");
     } catch (err) {
       console.error("Error fetching coupons:", err);
-      setError("Failed to fetch coupons");
+      setError(err.response?.data?.message || "Failed to fetch coupons");
     } finally {
       setLoading(false);
     }
@@ -74,10 +75,11 @@ const Coupon = () => {
   const fetchProducts = async () => {
     try {
       setProductsLoading(true);
-      const res = await axios.get(`${PRODUCT_API_URL}/my-products`, {
+      const res = await axios.get(PRODUCT_API_URL, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      setProducts(res.data);
+      // Fix: Handle response structure properly
+      setProducts(res.data.products || res.data || []);
     } catch (err) {
       console.error("Error fetching products:", err);
       setProducts([]);
@@ -111,25 +113,30 @@ const Coupon = () => {
       setSuccess("Coupon deleted successfully!");
     } catch (err) {
       console.error("Delete error:", err);
-      setError("Delete failed");
+      setError(err.response?.data?.message || "Delete failed");
     }
   };
 
   // ================= EDIT COUPON =================
   const handleEdit = (coupon) => {
+    // Fix: Safely handle products array
+    const productIds = coupon.products && Array.isArray(coupon.products) 
+      ? coupon.products.map(p => p._id || p)
+      : [];
+      
     setEditData({ 
       ...coupon,
-      // Convert products array to product IDs for multi-select
-      productIds: coupon.products.map(p => p._id || p)
+      productIds: productIds
     });
     setShowEdit(true);
   };
 
   const handleSaveEdit = async () => {
     try {
+      // Fix: Ensure proper data types
       const payload = {
         code: editData.code,
-        discount: editData.discount,
+        discount: parseFloat(editData.discount),
         type: editData.type,
         products: editData.productIds || [],
         expiryDate: editData.expiryDate,
@@ -160,9 +167,10 @@ const Coupon = () => {
     }
 
     try {
+      // Fix: Ensure proper data types
       const payload = {
         code: newCoupon.code,
-        discount: newCoupon.discount,
+        discount: parseFloat(newCoupon.discount),
         type: newCoupon.type,
         products: newCoupon.products || [],
         expiryDate: newCoupon.expiryDate,
@@ -228,9 +236,18 @@ const Coupon = () => {
 
   if (loading || productsLoading) {
     return (
-      <div className="text-center py-5">
-        <Spinner animation="border" /> Loading coupons...
-      </div>
+      <>
+        <Header />
+        <Sidebar />
+        <main className="admin-content mt-5">
+          <Container>
+            <div className="text-center py-5">
+              <Spinner animation="border" variant="primary" />
+              <p className="mt-3">Loading coupons...</p>
+            </div>
+          </Container>
+        </main>
+      </>
     );
   }
 
@@ -248,7 +265,7 @@ const Coupon = () => {
           {/* STATS CARDS */}
           <Row className="mb-4">
             <Col md={3}>
-              <Card className="text-center">
+              <Card className="text-center shadow-sm">
                 <Card.Body>
                   <FaTag size={30} className="text-primary mb-2" />
                   <h5>Total Coupons</h5>
@@ -257,7 +274,7 @@ const Coupon = () => {
               </Card>
             </Col>
             <Col md={3}>
-              <Card className="text-center">
+              <Card className="text-center shadow-sm">
                 <Card.Body>
                   <FaCheckCircle size={30} className="text-success mb-2" />
                   <h5>Active</h5>
@@ -266,7 +283,7 @@ const Coupon = () => {
               </Card>
             </Col>
             <Col md={3}>
-              <Card className="text-center">
+              <Card className="text-center shadow-sm">
                 <Card.Body>
                   <FaClock size={30} className="text-danger mb-2" />
                   <h5>Expired</h5>
@@ -275,7 +292,7 @@ const Coupon = () => {
               </Card>
             </Col>
             <Col md={3}>
-              <Card className="text-center">
+              <Card className="text-center shadow-sm">
                 <Card.Body>
                   <FaTimesCircle size={30} className="text-secondary mb-2" />
                   <h5>Inactive</h5>
@@ -291,14 +308,14 @@ const Coupon = () => {
               My Coupons
             </motion.h4>
 
-            <Button onClick={() => setShowAdd(true)}>
+            <Button onClick={() => setShowAdd(true)} variant="primary">
               <FaPlus /> Add Coupon
             </Button>
           </div>
 
           {/* TABLE */}
           <Table responsive bordered hover>
-            <thead>
+            <thead className="table-light">
               <tr>
                 <th>Code</th>
                 <th>Discount</th>
@@ -312,13 +329,15 @@ const Coupon = () => {
             <tbody>
               {coupons.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="text-center">No coupons found</td>
+                  <td colSpan="7" className="text-center py-4 text-muted">
+                    No coupons found. Click "Add Coupon" to create one.
+                  </td>
                 </tr>
               ) : (
                 coupons.map((coupon) => (
                   <tr key={coupon._id}>
                     <td>
-                      <strong>{coupon.code}</strong>
+                      <strong className="text-primary">{coupon.code}</strong>
                     </td>
                     <td>
                       {coupon.type === "percentage" ? `${coupon.discount}%` : `₹${coupon.discount}`}
@@ -326,13 +345,13 @@ const Coupon = () => {
                     <td>{getTypeBadge(coupon.type)}</td>
                     <td>
                       {coupon.products && coupon.products.length > 0 ? (
-                        <span>{coupon.products.length} products</span>
+                        <span>{coupon.products.length} product(s)</span>
                       ) : (
                         <span className="text-muted">All products</span>
                       )}
                     </td>
                     <td>
-                      {new Date(coupon.expiryDate).toLocaleDateString()}
+                      {coupon.expiryDate ? new Date(coupon.expiryDate).toLocaleDateString() : 'N/A'}
                     </td>
                     <td>{getStatusBadge(coupon)}</td>
                     <td>
@@ -377,7 +396,7 @@ const Coupon = () => {
                   setNewCoupon({ ...newCoupon, code: e.target.value.toUpperCase() })
                 }
               />
-              <small className="text-muted">Code will be automatically uppercase</small>
+              <Form.Text className="text-muted">Code will be automatically uppercase</Form.Text>
             </Form.Group>
 
             <Row>
@@ -391,6 +410,7 @@ const Coupon = () => {
                     onChange={(e) =>
                       setNewCoupon({ ...newCoupon, discount: e.target.value })
                     }
+                    min="0"
                   />
                 </Form.Group>
               </Col>
@@ -421,14 +441,14 @@ const Coupon = () => {
                   setNewCoupon({ ...newCoupon, products: selected });
                 }}
               >
-                <option value="">All Products (Leave empty for all)</option>
+                <option value="">All Products</option>
                 {products.map((product) => (
                   <option key={product._id} value={product._id}>
                     {product.name} - ₹{product.price}
                   </option>
                 ))}
               </Form.Select>
-              <small className="text-muted">Hold Ctrl/Cmd to select multiple products. Leave empty for all products.</small>
+              <Form.Text className="text-muted">Hold Ctrl/Cmd to select multiple products. Leave empty for all products.</Form.Text>
             </Form.Group>
 
             <Row>
@@ -501,6 +521,7 @@ const Coupon = () => {
                       onChange={(e) =>
                         setEditData({ ...editData, discount: e.target.value })
                       }
+                      min="0"
                     />
                   </Form.Group>
                 </Col>
@@ -538,7 +559,7 @@ const Coupon = () => {
                     </option>
                   ))}
                 </Form.Select>
-                <small className="text-muted">Hold Ctrl/Cmd to select multiple products</small>
+                <Form.Text className="text-muted">Hold Ctrl/Cmd to select multiple products</Form.Text>
               </Form.Group>
 
               <Row>

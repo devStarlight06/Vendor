@@ -14,12 +14,12 @@ import { FaEdit, FaTrash, FaPlus, FaFileExcel, FaSync } from "react-icons/fa";
 import Header from "../../component/header/header";
 import Sidebar from "../../component/sidebar/sidebar";
 
-const API_URL = "https://api.brandelvendor.starlighttechlabsindia.com/api/products";
-// ✅ CORRECT: Admin category API endpoint
-const ADMIN_CATEGORY_API_URL = "https://api.brandelsuperadmin.starlighttechlabsindia.com/api/category";
-// const API_URL = "http://localhost:5001/api/products";
+// const API_URL = "https://api.brandelvendor.starlighttechlabsindia.com/api/products";
 // // ✅ CORRECT: Admin category API endpoint
 // const ADMIN_CATEGORY_API_URL = "https://api.brandelsuperadmin.starlighttechlabsindia.com/api/category";
+const API_URL = "http://localhost:5001/api/products";
+// ✅ CORRECT: Admin category API endpoint
+const ADMIN_CATEGORY_API_URL = "https://api.brandelsuperadmin.starlighttechlabsindia.com/api/category";
 
 const Product = () => {
   const [products, setProducts] = useState([]);

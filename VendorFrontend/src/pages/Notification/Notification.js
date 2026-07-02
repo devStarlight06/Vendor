@@ -26,7 +26,10 @@ import { MdNotificationsActive, MdNotificationsOff } from "react-icons/md";
 import Header from "../../component/header/header";
 import Sidebar from "../../component/sidebar/sidebar";
 
-const API_URL = process.env.REACT_APP_API_BASE + "/notifications";
+// ✅ FIX: Use consistent API URL
+const API_URL = process.env.REACT_APP_API_BASE 
+  ? process.env.REACT_APP_API_BASE + "/notifications"
+  : "http://localhost:5001/api/notifications";
 
 const Notification = () => {
   const [notifications, setNotifications] = useState([]);
@@ -43,21 +46,41 @@ const Notification = () => {
   const fetchNotifications = async () => {
     try {
       setLoading(true);
+      console.log("Fetching notifications from:", API_URL);
+      
       const res = await axios.get(API_URL, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
       });
+      
+      console.log("Notifications response:", res.data);
       setNotifications(res.data.notifications || []);
       setError("");
     } catch (err) {
       console.error("Error fetching notifications:", err);
-      setError("Failed to fetch notifications");
+      console.error("Error response:", err.response?.data);
+      
+      if (err.response?.status === 401) {
+        setError("Session expired. Please login again.");
+      } else if (err.response?.status === 404) {
+        setError("Notification API not found. Please check server configuration.");
+      } else {
+        setError(err.response?.data?.message || "Failed to fetch notifications");
+      }
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchNotifications();
+    if (token) {
+      fetchNotifications();
+    } else {
+      setError("Please login to view notifications");
+      setLoading(false);
+    }
   }, []);
 
   // Clear messages
@@ -81,7 +104,7 @@ const Notification = () => {
       setSuccess("Notification marked as read!");
     } catch (err) {
       console.error("Mark as read error:", err);
-      setError("Failed to mark as read");
+      setError(err.response?.data?.message || "Failed to mark as read");
     }
   };
 
@@ -97,19 +120,29 @@ const Notification = () => {
         return;
       }
 
-      await Promise.all(
-        unreadIds.map(id => 
-          axios.put(`${API_URL}/${id}/read`, {}, {
-            headers: { Authorization: `Bearer ${token}` },
-          })
-        )
-      );
-
-      setNotifications(notifications.map(n => ({ ...n, read: true })));
-      setSuccess("All notifications marked as read!");
+      // ✅ Use bulk update endpoint if available
+      try {
+        await axios.put(`${API_URL}/read-all`, {}, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        
+        setNotifications(notifications.map(n => ({ ...n, read: true })));
+        setSuccess("All notifications marked as read!");
+      } catch (err) {
+        // ✅ Fallback to individual updates if bulk endpoint not available
+        await Promise.all(
+          unreadIds.map(id => 
+            axios.put(`${API_URL}/${id}/read`, {}, {
+              headers: { Authorization: `Bearer ${token}` },
+            })
+          )
+        );
+        setNotifications(notifications.map(n => ({ ...n, read: true })));
+        setSuccess("All notifications marked as read!");
+      }
     } catch (err) {
       console.error("Mark all as read error:", err);
-      setError("Failed to mark all as read");
+      setError(err.response?.data?.message || "Failed to mark all as read");
     }
   };
 
@@ -125,7 +158,7 @@ const Notification = () => {
       setSuccess("Notification deleted successfully!");
     } catch (err) {
       console.error("Delete error:", err);
-      setError("Delete failed");
+      setError(err.response?.data?.message || "Delete failed");
     }
   };
 
@@ -134,18 +167,28 @@ const Notification = () => {
     if (!window.confirm("Are you sure you want to delete all notifications?")) return;
     
     try {
-      await Promise.all(
-        notifications.map(n => 
-          axios.delete(`${API_URL}/${n._id}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          })
-        )
-      );
-      setNotifications([]);
-      setSuccess("All notifications deleted!");
+      // ✅ Use bulk delete endpoint if available
+      try {
+        await axios.delete(`${API_URL}/delete-all`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setNotifications([]);
+        setSuccess("All notifications deleted!");
+      } catch (err) {
+        // ✅ Fallback to individual deletes
+        await Promise.all(
+          notifications.map(n => 
+            axios.delete(`${API_URL}/${n._id}`, {
+              headers: { Authorization: `Bearer ${token}` },
+            })
+          )
+        );
+        setNotifications([]);
+        setSuccess("All notifications deleted!");
+      }
     } catch (err) {
       console.error("Delete all error:", err);
-      setError("Failed to delete all notifications");
+      setError(err.response?.data?.message || "Failed to delete all notifications");
     }
   };
 
@@ -183,11 +226,30 @@ const Notification = () => {
     return new Date(date).toLocaleDateString();
   };
 
+  // ================= GET TYPE BADGE =================
+  const getTypeBadge = (type) => {
+    switch(type) {
+      case 'success': return <Badge bg="success">Success</Badge>;
+      case 'warning': return <Badge bg="warning">Warning</Badge>;
+      case 'danger': return <Badge bg="danger">Danger</Badge>;
+      default: return <Badge bg="info">Info</Badge>;
+    }
+  };
+
   if (loading) {
     return (
-      <div className="text-center py-5">
-        <Spinner animation="border" /> Loading notifications...
-      </div>
+      <>
+        <Header />
+        <Sidebar />
+        <main className="admin-content mt-5">
+          <Container>
+            <div className="text-center py-5">
+              <Spinner animation="border" variant="primary" />
+              <p className="mt-3">Loading notifications...</p>
+            </div>
+          </Container>
+        </main>
+      </>
     );
   }
 
@@ -205,7 +267,7 @@ const Notification = () => {
           {/* STATS CARDS */}
           <Row className="mb-4">
             <Col md={4}>
-              <Card className="text-center">
+              <Card className="text-center shadow-sm">
                 <Card.Body>
                   <FaBell size={30} className="text-primary mb-2" />
                   <h5>Total Notifications</h5>
@@ -214,7 +276,7 @@ const Notification = () => {
               </Card>
             </Col>
             <Col md={4}>
-              <Card className="text-center">
+              <Card className="text-center shadow-sm">
                 <Card.Body>
                   <MdNotificationsActive size={30} className="text-danger mb-2" />
                   <h5>Unread</h5>
@@ -223,7 +285,7 @@ const Notification = () => {
               </Card>
             </Col>
             <Col md={4}>
-              <Card className="text-center">
+              <Card className="text-center shadow-sm">
                 <Card.Body>
                   <MdNotificationsOff size={30} className="text-success mb-2" />
                   <h5>Read</h5>
@@ -234,7 +296,7 @@ const Notification = () => {
           </Row>
 
           {/* HEADER */}
-          <div className="d-flex justify-content-between align-items-center mb-4">
+          <div className="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
             <motion.h4 initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
               Notifications
               {stats.unread > 0 && (
@@ -246,7 +308,7 @@ const Notification = () => {
               {stats.unread > 0 && (
                 <Button 
                   variant="outline-primary" 
-                  className="me-2"
+                  className="me-2 mb-2 mb-sm-0"
                   onClick={handleMarkAllAsRead}
                 >
                   <FaCheckDouble /> Mark All as Read
@@ -265,10 +327,11 @@ const Notification = () => {
 
           {/* TABLE */}
           <Table responsive bordered hover>
-            <thead>
+            <thead className="table-light">
               <tr>
                 <th style={{ width: "5%" }}>Status</th>
-                <th style={{ width: "20%" }}>Title</th>
+                <th style={{ width: "10%" }}>Type</th>
+                <th style={{ width: "18%" }}>Title</th>
                 <th>Message</th>
                 <th style={{ width: "15%" }}>Received</th>
                 <th style={{ width: "15%" }}>Actions</th>
@@ -277,7 +340,7 @@ const Notification = () => {
             <tbody>
               {notifications.length === 0 ? (
                 <tr>
-                  <td colSpan="5" className="text-center py-5">
+                  <td colSpan="6" className="text-center py-5">
                     <FaBell size={50} className="text-muted mb-3" />
                     <p className="text-muted">No notifications found</p>
                   </td>
@@ -299,6 +362,7 @@ const Notification = () => {
                         </Badge>
                       )}
                     </td>
+                    <td>{getTypeBadge(notification.type)}</td>
                     <td>
                       <strong>{notification.title || "No Title"}</strong>
                     </td>
@@ -375,7 +439,8 @@ const Notification = () => {
         {selectedNotification && (
           <Modal.Body>
             <div className="mb-3">
-              <Badge bg={selectedNotification.read ? "success" : "danger"}>
+              {getTypeBadge(selectedNotification.type)}
+              <Badge bg={selectedNotification.read ? "success" : "danger"} className="ms-2">
                 {selectedNotification.read ? "Read" : "Unread"}
               </Badge>
               <span className="ms-3 text-muted">
@@ -391,6 +456,14 @@ const Notification = () => {
                 {selectedNotification.message || "No message content"}
               </p>
             </div>
+
+            {selectedNotification.link && (
+              <div className="mt-3">
+                <small className="text-muted">
+                  <a href={selectedNotification.link}>View related item</a>
+                </small>
+              </div>
+            )}
 
             <div className="mt-3">
               <small className="text-muted">

@@ -12,7 +12,18 @@ const notificationRoutes =require("./routes/notificationRoutes");
 const settingsRoutes =require("./routes/settingsRoutes");
 const app = express();
 
-app.use(cors());
+//app.use(cors());
+app.use(cors({
+  origin: [
+    " http://api-vendor.native91.com",
+    "https://vendor.native91.com",
+    "https://native91.com",	"https://api.native91.com",
+
+    "https://vendor.native91.com",	"https://api-vendor.native91.com",
+    "https://admin.native91.com",	"https://api-admin.native91.com"
+  ],
+  credentials: true
+}));
 app.use(express.json());
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 mongoose.connect(process.env.MONGO_URI)
@@ -27,6 +38,24 @@ app.use("/api/reviews", reviewRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/seller", sellerDocumentRoutes);
+app.get("/api/test", (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: "Vendor Backend API is working!",
+    port: process.env.PORT,
+    timestamp: new Date().toISOString()
+  });
+});
 app.listen(process.env.PORT, () => {
   console.log(`✅ Server running on port ${process.env.PORT}`);
 });
+
+
+
+
+
+
+
+
+
+

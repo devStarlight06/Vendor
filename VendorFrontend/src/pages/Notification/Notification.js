@@ -1,3 +1,5 @@
+// Notification.js - COMPLETE WITH SUSPENSION HANDLING
+
 import { useState, useEffect } from "react";
 import axios from "axios";
 import {
@@ -20,16 +22,17 @@ import {
   FaEye,
   FaEnvelope,
   FaEnvelopeOpen,
-  FaClock
+  FaClock,
+  FaBan,
+  FaExclamationTriangle
 } from "react-icons/fa";
 import { MdNotificationsActive, MdNotificationsOff } from "react-icons/md";
 import Header from "../../component/header/header";
 import Sidebar from "../../component/sidebar/sidebar";
 
-// ✅ FIX: Use consistent API URL
 const API_URL = process.env.REACT_APP_API_BASE 
   ? process.env.REACT_APP_API_BASE + "/notifications"
-  : "http://localhost:5001/api/notifications";
+  : "https://api.brandelvendor.starlighttechlabsindia.com/api/notifications";
 
 const Notification = () => {
   const [notifications, setNotifications] = useState([]);
@@ -40,7 +43,54 @@ const Notification = () => {
   const [showDetail, setShowDetail] = useState(false);
   const [selectedNotification, setSelectedNotification] = useState(null);
 
+  // ✅ Suspension state
+  const [suspensionInfo, setSuspensionInfo] = useState({
+    isSuspended: false,
+    reason: '',
+    suspendedAt: null
+  });
+
   const token = localStorage.getItem("token");
+
+  // ================= CHECK VENDOR STATUS =================
+  const checkVendorStatus = async () => {
+    try {
+      // ✅ Try /auth/status first (vendor route)
+      const res = await axios.get(`${API_URL.replace('/notifications', '')}/vendor/status`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      const data = res.data;
+      if (data && data.isSuspended) {
+        setSuspensionInfo({
+          isSuspended: true,
+          reason: data.suspensionReason || 'No reason provided',
+          suspendedAt: data.suspendedAt
+        });
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.warn("Status check error:", err.message);
+      
+      // ✅ Fallback: Check localStorage
+      try {
+        const storedVendor = JSON.parse(localStorage.getItem('vendorData') || '{}');
+        if (storedVendor.status === 'suspended') {
+          setSuspensionInfo({
+            isSuspended: true,
+            reason: storedVendor.suspensionReason || 'No reason provided',
+            suspendedAt: storedVendor.suspendedAt
+          });
+          return true;
+        }
+      } catch (localErr) {
+        console.warn("LocalStorage status check error:", localErr.message);
+      }
+      
+      return false;
+    }
+  };
 
   // ================= FETCH NOTIFICATIONS =================
   const fetchNotifications = async () => {
@@ -64,6 +114,8 @@ const Notification = () => {
       
       if (err.response?.status === 401) {
         setError("Session expired. Please login again.");
+      } else if (err.response?.status === 403) {
+        setError("Access denied. Please check your account status.");
       } else if (err.response?.status === 404) {
         setError("Notification API not found. Please check server configuration.");
       } else {
@@ -75,12 +127,21 @@ const Notification = () => {
   };
 
   useEffect(() => {
-    if (token) {
-      fetchNotifications();
-    } else {
-      setError("Please login to view notifications");
-      setLoading(false);
-    }
+    const initialize = async () => {
+      if (!token) {
+        setError("Please login to view notifications");
+        setLoading(false);
+        return;
+      }
+
+      const isSuspended = await checkVendorStatus();
+      if (!isSuspended) {
+        await fetchNotifications();
+      } else {
+        setLoading(false);
+      }
+    };
+    initialize();
   }, []);
 
   // Clear messages
@@ -93,6 +154,11 @@ const Notification = () => {
 
   // ================= MARK AS READ =================
   const handleMarkAsRead = async (id) => {
+    if (suspensionInfo.isSuspended) {
+      setError("Cannot mark notifications while account is suspended.");
+      return;
+    }
+    
     try {
       await axios.put(`${API_URL}/${id}/read`, {}, {
         headers: { Authorization: `Bearer ${token}` },
@@ -110,6 +176,11 @@ const Notification = () => {
 
   // ================= MARK ALL AS READ =================
   const handleMarkAllAsRead = async () => {
+    if (suspensionInfo.isSuspended) {
+      setError("Cannot mark notifications while account is suspended.");
+      return;
+    }
+    
     try {
       const unreadIds = notifications
         .filter(n => !n.read)
@@ -120,7 +191,6 @@ const Notification = () => {
         return;
       }
 
-      // ✅ Use bulk update endpoint if available
       try {
         await axios.put(`${API_URL}/read-all`, {}, {
           headers: { Authorization: `Bearer ${token}` },
@@ -129,7 +199,6 @@ const Notification = () => {
         setNotifications(notifications.map(n => ({ ...n, read: true })));
         setSuccess("All notifications marked as read!");
       } catch (err) {
-        // ✅ Fallback to individual updates if bulk endpoint not available
         await Promise.all(
           unreadIds.map(id => 
             axios.put(`${API_URL}/${id}/read`, {}, {
@@ -148,6 +217,11 @@ const Notification = () => {
 
   // ================= DELETE NOTIFICATION =================
   const handleDelete = async (id) => {
+    if (suspensionInfo.isSuspended) {
+      setError("Cannot delete notifications while account is suspended.");
+      return;
+    }
+    
     if (!window.confirm("Are you sure you want to delete this notification?")) return;
     
     try {
@@ -164,10 +238,14 @@ const Notification = () => {
 
   // ================= DELETE ALL =================
   const handleDeleteAll = async () => {
+    if (suspensionInfo.isSuspended) {
+      setError("Cannot delete notifications while account is suspended.");
+      return;
+    }
+    
     if (!window.confirm("Are you sure you want to delete all notifications?")) return;
     
     try {
-      // ✅ Use bulk delete endpoint if available
       try {
         await axios.delete(`${API_URL}/delete-all`, {
           headers: { Authorization: `Bearer ${token}` },
@@ -175,7 +253,6 @@ const Notification = () => {
         setNotifications([]);
         setSuccess("All notifications deleted!");
       } catch (err) {
-        // ✅ Fallback to individual deletes
         await Promise.all(
           notifications.map(n => 
             axios.delete(`${API_URL}/${n._id}`, {
@@ -194,10 +271,14 @@ const Notification = () => {
 
   // ================= VIEW DETAIL =================
   const handleViewDetail = (notification) => {
+    if (suspensionInfo.isSuspended) {
+      setError("Cannot view notifications while account is suspended.");
+      return;
+    }
+    
     setSelectedNotification(notification);
     setShowDetail(true);
     
-    // Auto mark as read when viewed
     if (!notification.read) {
       handleMarkAsRead(notification._id);
     }
@@ -264,10 +345,36 @@ const Notification = () => {
           {error && <Alert variant="danger" onClose={() => setError("")} dismissible>{error}</Alert>}
           {success && <Alert variant="success" onClose={() => setSuccess("")} dismissible>{success}</Alert>}
 
+          {/* 🚫 SUSPENSION ALERT */}
+          {suspensionInfo.isSuspended && (
+            <Alert variant="danger" className="mb-4">
+              <div className="d-flex align-items-start">
+                <FaBan className="me-3 mt-1" style={{ fontSize: '28px' }} />
+                <div>
+                  <h5 className="mb-1">
+                    <FaExclamationTriangle className="me-2" />
+                    Account Suspended
+                  </h5>
+                  <p className="mb-1">
+                    <strong>Reason:</strong> {suspensionInfo.reason || 'No reason provided'}
+                  </p>
+                  {suspensionInfo.suspendedAt && (
+                    <small className="text-muted d-block">
+                      Suspended on: {new Date(suspensionInfo.suspendedAt).toLocaleString()}
+                    </small>
+                  )}
+                  <p className="mt-2 mb-0">
+                    <small>Notification management is disabled while your account is suspended.</small>
+                  </p>
+                </div>
+              </div>
+            </Alert>
+          )}
+
           {/* STATS CARDS */}
           <Row className="mb-4">
             <Col md={4}>
-              <Card className="text-center shadow-sm">
+              <Card className={`text-center shadow-sm ${suspensionInfo.isSuspended ? 'opacity-50' : ''}`}>
                 <Card.Body>
                   <FaBell size={30} className="text-primary mb-2" />
                   <h5>Total Notifications</h5>
@@ -276,7 +383,7 @@ const Notification = () => {
               </Card>
             </Col>
             <Col md={4}>
-              <Card className="text-center shadow-sm">
+              <Card className={`text-center shadow-sm ${suspensionInfo.isSuspended ? 'opacity-50' : ''}`}>
                 <Card.Body>
                   <MdNotificationsActive size={30} className="text-danger mb-2" />
                   <h5>Unread</h5>
@@ -285,7 +392,7 @@ const Notification = () => {
               </Card>
             </Col>
             <Col md={4}>
-              <Card className="text-center shadow-sm">
+              <Card className={`text-center shadow-sm ${suspensionInfo.isSuspended ? 'opacity-50' : ''}`}>
                 <Card.Body>
                   <MdNotificationsOff size={30} className="text-success mb-2" />
                   <h5>Read</h5>
@@ -299,34 +406,57 @@ const Notification = () => {
           <div className="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
             <motion.h4 initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
               Notifications
-              {stats.unread > 0 && (
+              {suspensionInfo.isSuspended && (
+                <Badge bg="danger" className="ms-2">
+                  <FaBan className="me-1" /> Suspended
+                </Badge>
+              )}
+              {!suspensionInfo.isSuspended && stats.unread > 0 && (
                 <Badge bg="danger" className="ms-2">{stats.unread} unread</Badge>
               )}
             </motion.h4>
 
             <div>
-              {stats.unread > 0 && (
-                <Button 
-                  variant="outline-primary" 
-                  className="me-2 mb-2 mb-sm-0"
-                  onClick={handleMarkAllAsRead}
-                >
-                  <FaCheckDouble /> Mark All as Read
-                </Button>
-              )}
-              {notifications.length > 0 && (
-                <Button 
-                  variant="outline-danger"
-                  onClick={handleDeleteAll}
-                >
-                  <FaTrash /> Delete All
+              {!suspensionInfo.isSuspended ? (
+                <>
+                  {stats.unread > 0 && (
+                    <Button 
+                      variant="outline-primary" 
+                      className="me-2 mb-2 mb-sm-0"
+                      onClick={handleMarkAllAsRead}
+                    >
+                      <FaCheckDouble /> Mark All as Read
+                    </Button>
+                  )}
+                  {notifications.length > 0 && (
+                    <Button 
+                      variant="outline-danger"
+                      onClick={handleDeleteAll}
+                    >
+                      <FaTrash /> Delete All
+                    </Button>
+                  )}
+                </>
+              ) : (
+                <Button variant="secondary" disabled>
+                  <FaBan className="me-1" /> Management Disabled
                 </Button>
               )}
             </div>
           </div>
 
+          {/* Suspended Message */}
+          {suspensionInfo.isSuspended && (
+            <Alert variant="secondary" className="text-center py-4 mb-3">
+              <FaBan style={{ fontSize: '36px', color: '#6c757d' }} />
+              <h5 className="mt-2">Notifications Restricted</h5>
+              <p>Your account has been suspended. You cannot manage notifications.</p>
+              <small>Please contact admin to resolve this issue.</small>
+            </Alert>
+          )}
+
           {/* TABLE */}
-          <Table responsive bordered hover>
+          <Table responsive bordered hover className={suspensionInfo.isSuspended ? 'opacity-50' : ''}>
             <thead className="table-light">
               <tr>
                 <th style={{ width: "5%" }}>Status</th>
@@ -342,17 +472,21 @@ const Notification = () => {
                 <tr>
                   <td colSpan="6" className="text-center py-5">
                     <FaBell size={50} className="text-muted mb-3" />
-                    <p className="text-muted">No notifications found</p>
+                    <p className="text-muted">
+                      {suspensionInfo.isSuspended 
+                        ? 'Notifications are hidden while account is suspended' 
+                        : 'No notifications found'}
+                    </p>
                   </td>
                 </tr>
               ) : (
                 notifications.map((notification) => (
                   <tr 
                     key={notification._id}
-                    className={!notification.read ? "table-active" : ""}
+                    className={!notification.read && !suspensionInfo.isSuspended ? "table-active" : ""}
                   >
                     <td className="text-center">
-                      {!notification.read ? (
+                      {!notification.read && !suspensionInfo.isSuspended ? (
                         <Badge bg="danger" pill>
                           <FaBell />
                         </Badge>
@@ -370,14 +504,16 @@ const Notification = () => {
                       {notification.message && notification.message.length > 100 ? (
                         <>
                           {notification.message.substring(0, 100)}...
-                          <Button
-                            size="sm"
-                            variant="link"
-                            className="p-0 ms-1"
-                            onClick={() => handleViewDetail(notification)}
-                          >
-                            Read more
-                          </Button>
+                          {!suspensionInfo.isSuspended && (
+                            <Button
+                              size="sm"
+                              variant="link"
+                              className="p-0 ms-1"
+                              onClick={() => handleViewDetail(notification)}
+                            >
+                              Read more
+                            </Button>
+                          )}
                         </>
                       ) : (
                         notification.message || "No message"
@@ -390,40 +526,54 @@ const Notification = () => {
                       </small>
                     </td>
                     <td>
-                      {!notification.read && (
-                        <Button
-                          size="sm"
-                          variant="outline-success"
-                          className="me-1"
-                          onClick={() => handleMarkAsRead(notification._id)}
-                          title="Mark as read"
-                        >
-                          <FaCheckDouble />
-                        </Button>
+                      {!suspensionInfo.isSuspended ? (
+                        <>
+                          {!notification.read && (
+                            <Button
+                              size="sm"
+                              variant="outline-success"
+                              className="me-1"
+                              onClick={() => handleMarkAsRead(notification._id)}
+                              title="Mark as read"
+                            >
+                              <FaCheckDouble />
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="outline-info"
+                            className="me-1"
+                            onClick={() => handleViewDetail(notification)}
+                            title="View details"
+                          >
+                            <FaEye />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline-danger"
+                            onClick={() => handleDelete(notification._id)}
+                            title="Delete"
+                          >
+                            <FaTrash />
+                          </Button>
+                        </>
+                      ) : (
+                        <Badge bg="secondary">Locked</Badge>
                       )}
-                      <Button
-                        size="sm"
-                        variant="outline-info"
-                        className="me-1"
-                        onClick={() => handleViewDetail(notification)}
-                        title="View details"
-                      >
-                        <FaEye />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline-danger"
-                        onClick={() => handleDelete(notification._id)}
-                        title="Delete"
-                      >
-                        <FaTrash />
-                      </Button>
                     </td>
                   </tr>
                 ))
               )}
             </tbody>
           </Table>
+
+          {/* Footer Info */}
+          {!suspensionInfo.isSuspended && (
+            <div className="text-muted small">
+              Showing {notifications.length} notifications
+              {stats.unread > 0 && ` | ${stats.unread} unread`}
+            </div>
+          )}
         </Container>
       </main>
 
@@ -477,7 +627,7 @@ const Notification = () => {
           <Button variant="secondary" onClick={() => setShowDetail(false)}>
             Close
           </Button>
-          {selectedNotification && !selectedNotification.read && (
+          {selectedNotification && !selectedNotification.read && !suspensionInfo.isSuspended && (
             <Button 
               variant="primary" 
               onClick={() => {

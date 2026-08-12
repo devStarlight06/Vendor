@@ -6,7 +6,7 @@ const path = require("path");
 const authRoutes = require("./routes/auth.routes");
 const productRoutes = require("./routes/product.routes");
 const reviewRoutes = require("./routes/reviewRoutes");
-
+const sellerDocumentRoutes = require("./routes/sellerDocument.routes");
 const notificationRoutes =require("./routes/notificationRoutes");
 
 const settingsRoutes =require("./routes/settingsRoutes");
@@ -26,6 +26,7 @@ app.use("/api/coupons", require("./routes/couponRoutes"));
 app.use("/api/reviews", reviewRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/settings", settingsRoutes);
+app.use("/api/seller", sellerDocumentRoutes);
 app.listen(process.env.PORT, () => {
   console.log(`✅ Server running on port ${process.env.PORT}`);
 });

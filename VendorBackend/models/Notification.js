@@ -2,12 +2,28 @@ const mongoose = require("mongoose");
 
 const notificationSchema = new mongoose.Schema(
   {
-    company: String,
-
-    title: String,
-
-    message: String,
-
+    company: {
+      type: String,
+      required: true,
+      index: true,
+    },
+    title: {
+      type: String,
+      required: true,
+    },
+    message: {
+      type: String,
+      required: true,
+    },
+    type: {
+      type: String,
+      enum: ["info", "success", "warning", "danger"],
+      default: "info",
+    },
+    link: {
+      type: String,
+      default: null,
+    },
     read: {
       type: Boolean,
       default: false,
@@ -16,7 +32,8 @@ const notificationSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-module.exports = mongoose.model(
-  "Notification",
-  notificationSchema
-);
+// Indexes for faster queries
+notificationSchema.index({ company: 1, createdAt: -1 });
+notificationSchema.index({ company: 1, read: 1 });
+
+module.exports = mongoose.model("Notification", notificationSchema);

@@ -94,3 +94,77 @@
     width: 100%;
   }
 }
+/* Add to dashboard.css */
+
+/* 🆕 Plan Card Styles */
+.plan-card {
+  border-left: 4px solid #007bff;
+  background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+
+.plan-icon-large {
+  font-size: 2.5rem;
+  color: #007bff;
+}
+
+.plan-features {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.feature-badge {
+  background: #e9ecef;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  color: #495057;
+}
+
+/* Stat Cards */
+.stat-card {
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  border-radius: 12px;
+  border: none;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  transition: all 0.3s;
+  background: white;
+}
+
+.stat-card:hover {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+}
+
+.stat-icon {
+  font-size: 2rem;
+  color: #007bff;
+  background: #e9ecef;
+  padding: 12px;
+  border-radius: 10px;
+  min-width: 50px;
+  text-align: center;
+}
+
+.stat-card h6 {
+  font-size: 0.85rem;
+  color: #6c757d;
+  margin-bottom: 4px;
+}
+
+.stat-card h4 {
+  font-size: 1.3rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+/* Chart Card */
+.chart-card {
+  padding: 24px;
+  border-radius: 12px;
+  border: none;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}

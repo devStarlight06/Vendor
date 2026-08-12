@@ -16,6 +16,9 @@ import Delivery from './pages/delivery/delivery';
 import Customer from './pages/customer/customer';
 // import Payment from './pages/payment/payment';
 
+// ✅ Public Document Upload (No Auth Required)
+import PublicDocumentUpload from "./pages/PublicDocumentUpload/PublicDocumentUpload";
+
 // NEW PAGES
 import Coupon from './pages/Coupon/Coupon';
 import Notification from './pages/Notification/Notification';
@@ -30,7 +33,7 @@ root.render(
       <Route path="/" element={<Login />} />
       <Route path="/VendorRegister" element={<VendorRegister />} />
       
-      {/* Main Routes */}
+      {/* Main Routes (Require Auth) */}
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/product" element={<Product />} />
       <Route path="/categories" element={<Categories />} />
@@ -43,6 +46,10 @@ root.render(
       <Route path="/notification" element={<Notification />} />
       <Route path="/review" element={<Review />} />
       <Route path="/settings" element={<Settings />} />
+      
+      {/* ✅ Public Document Upload Route - NO AUTH REQUIRED */}
+      {/* URL format: /document-upload/DOC-ABC123DEF456 */}
+      <Route path="/document-upload/:trackingId" element={<PublicDocumentUpload />} />
       
       {/* Payment (Commented) */}
       {/* <Route path="/payment" element={<Payment />} /> */}

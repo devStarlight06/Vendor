@@ -42,8 +42,8 @@ import {
 } from "react-icons/fa";
 import axios from "axios";
 import "./publicDocumentUpload.css";
-const API_URL =  "http://localhost:5001/api/seller";
-const API_BASE =  "http://localhost:5001"; // ✅ ADDED THIS
+const API_URL =  "https://api-vendor.native91.com/api/seller";
+const API_BASE =  "https://api-vendor.native91.com"; // ✅ ADDED THIS
 
 const PublicDocumentUpload = () => {
   const { trackingId } = useParams();

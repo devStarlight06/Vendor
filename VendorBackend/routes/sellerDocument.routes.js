@@ -13,7 +13,8 @@ const Vendor = require("../models/Vendor");
 const { 
   sendDocumentLinkEmail,
   sendApprovalEmail,
-  sendRejectionEmail
+  sendRejectionEmail,
+  sendVendorCreationEmail
 } = require("../middleware/emailService");
 
 const generateTrackingId = () => {
@@ -543,9 +544,6 @@ router.post("/sellers/applications/:id/approve", async (req, res) => {
   }
 });
 
-// ============================================================
-// ADMIN - VERIFY DOCUMENT (NO EMAIL - Only verification)
-// ============================================================
 router.patch("/admin/documents/verify/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -575,7 +573,6 @@ router.patch("/admin/documents/verify/:id", async (req, res) => {
       document.rejectionReason = rejectionReason;
       await document.save();
       
-      // Send rejection email (this is fine - rejection only)
       try {
         await sendRejectionEmail(
           document.email,
@@ -599,25 +596,141 @@ router.patch("/admin/documents/verify/:id", async (req, res) => {
     if (status === 'verified') {
       console.log(`✅ Documents verified for: ${document.email}`);
       
-      // Save verification status
-      document.verificationDate = new Date();
-      document.credentialsSent = false;
-      document.credentialsSentAt = null;
+      // Generate random password
+      const generatePassword = () => {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
+        let password = '';
+        for (let i = 0; i < 12; i++) {
+          password += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        return password;
+      };
+      
+      const tempPassword = generatePassword();
+      const hashedPassword = await bcrypt.hash(tempPassword, 10);
+      
+      // Check if vendor already exists
+      let vendor = await Vendor.findOne({ email: document.email });
+      
+      if (!vendor) {
+        // Create new vendor
+        vendor = new Vendor({
+          name: document.company || document.email.split('@')[0],
+          email: document.email,
+          password: hashedPassword,
+          role: 'vendor',
+          company: document.company || 'N/A',
+          plan: 'founding',
+          status: 'active',
+          planUpdatedAt: new Date(),
+          totalOrders: 0,
+          commissionRate: 0,
+          statusHistory: [{
+            status: 'active',
+            previousStatus: null,
+            changedBy: 'System',
+            changedByName: 'Admin',
+            reason: 'Vendor created from document verification',
+            timestamp: new Date()
+          }]
+        });
+        await vendor.save();
+        console.log(`✅ New vendor created: ${document.email}`);
+      } else {
+        // Update existing vendor
+        vendor.password = hashedPassword;
+        vendor.status = 'active';
+        vendor.company = document.company || vendor.company;
+        vendor.plan = 'founding';
+        vendor.commissionRate = 0;
+        vendor.planUpdatedAt = new Date();
+        
+        if (!vendor.statusHistory) {
+          vendor.statusHistory = [];
+        }
+        vendor.statusHistory.push({
+          status: 'active',
+          previousStatus: vendor.status,
+          changedBy: 'System',
+          changedByName: 'Admin',
+          reason: 'Account activated from document verification',
+          timestamp: new Date()
+        });
+        
+        await vendor.save();
+        console.log(`✅ Existing vendor updated: ${document.email}`);
+      }
+      
+      // Update document with vendor ID
+      document.vendorId = vendor._id;
+      document.credentialsSent = true;
+      document.credentialsSentAt = new Date();
       await document.save();
       
-      console.log(`✅ [VERIFY] Verification saved successfully`);
-      console.log(`📧 [VERIFY] NO approval email sent during verification`);
-      
       // ========================================================
-      // ⚠️ IMPORTANT: NO APPROVAL EMAIL SENT HERE!
-      // The approval email should only be sent once during approval
+      // ✅ SEND CREDENTIALS EMAIL USING THE EXISTING FUNCTION
       // ========================================================
       
-      return res.json({
-        success: true,
-        message: `✅ Documents verified successfully`,
-        document
-      });
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      const loginUrl = `${frontendUrl}/login`;
+      
+      try {
+        const emailResult = await sendVendorCreationEmail(
+          document.email,
+          document.company || "Vendor",
+          document.company || "N/A",
+          tempPassword,
+          vendor.plan || 'founding',
+          vendor.commissionRate || 0,
+          loginUrl,
+          "Admin"
+        );
+        
+        if (emailResult.success) {
+          console.log(`✅ Credentials email sent to: ${document.email}`);
+          
+          return res.json({
+            success: true,
+            message: `✅ Documents verified. Vendor created and credentials sent to ${document.email}`,
+            document,
+            vendor: {
+              id: vendor._id,
+              email: vendor.email,
+              password: tempPassword
+            },
+            emailSent: true
+          });
+        } else {
+          console.error("❌ Credentials email failed:", emailResult.error);
+          
+          return res.json({
+            success: true,
+            message: `✅ Documents verified and vendor created, but credentials email failed. Please resend manually.`,
+            document,
+            vendor: {
+              id: vendor._id,
+              email: vendor.email
+            },
+            emailSent: false,
+            emailError: emailResult.error
+          });
+        }
+        
+      } catch (emailErr) {
+        console.error("❌ Credentials email error:", emailErr);
+        
+        return res.json({
+          success: true,
+          message: `✅ Documents verified and vendor created, but credentials email failed. Please resend manually.`,
+          document,
+          vendor: {
+            id: vendor._id,
+            email: vendor.email
+          },
+          emailSent: false,
+          emailError: emailErr.message
+        });
+      }
     }
     
   } catch (err) {

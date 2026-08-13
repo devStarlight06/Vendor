@@ -5,7 +5,7 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 
 const Vendor = require("../models/Vendor");
-const Company = require("../Models/Company");
+const Company = require("../models/Company");
 
 const router = express.Router();
 

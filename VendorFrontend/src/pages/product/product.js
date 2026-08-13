@@ -39,15 +39,15 @@ import {
 import Header from "../../component/header/header";
 import Sidebar from "../../component/sidebar/sidebar";
 
-// const API_URL = "https://api.brandelvendor.starlighttechlabsindia.com/api/products";
-// const ADMIN_CATEGORY_API_URL = "https://api.brandelsuperadmin.starlighttechlabsindia.com/api/category";
-// const AUTH_API_URL = "https://api.brandelvendor.starlighttechlabsindia.com/api/vendor";
-// const BASE_URL = "https://api.brandelvendor.starlighttechlabsindia.com";
+ const API_URL = "https://api-vendor.native91.com/api/products";
+const ADMIN_CATEGORY_API_URL = "https://api-admin.native91.com/api/category";
+ const AUTH_API_URL = "https://api-vendor.native91.com/api/vendor";
+ const BASE_URL = "https://api-vendor.native91.com";
 
-const API_URL = "http://localhost:5001/api/products";
-const ADMIN_CATEGORY_API_URL = "http://localhost:7000/api/category";
-const AUTH_API_URL = "http://localhost:5001/api/vendor";
-const BASE_URL = "http://localhost:5001";
+//const API_URL = "http://localhost:5001/api/products";
+//const ADMIN_CATEGORY_API_URL = "http://localhost:7000/api/category";
+//const AUTH_API_URL = "http://localhost:5001/api/vendor";
+//const BASE_URL = "http://localhost:5001";
 
 const Product = () => {
   const [products, setProducts] = useState([]);

@@ -12,18 +12,17 @@ const notificationRoutes =require("./routes/notificationRoutes");
 const settingsRoutes =require("./routes/settingsRoutes");
 const app = express();
 
-//app.use(cors());
 app.use(cors({
   origin: [
-    " http://api-vendor.native91.com",
     "https://vendor.native91.com",
-    "https://native91.com",	"https://api.native91.com",
-
-    "https://vendor.native91.com",	"https://api-vendor.native91.com",
-    "https://admin.native91.com",	"https://api-admin.native91.com"
+    "https://native91.com",
+    "https://admin.native91.com"
   ],
-  credentials: true
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"]
 }));
+
 app.use(express.json());
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 mongoose.connect(process.env.MONGO_URI)

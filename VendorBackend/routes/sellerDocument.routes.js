@@ -1,4 +1,4 @@
-// sellerDocument.routes.js - COMPLETE FIXED VERSION (NO EMAILS FROM BACKEND)
+// sellerDocument.routes.js - With Per-Document Verification
 const express = require("express");
 const router = express.Router();
 const multer = require("multer");
@@ -9,12 +9,13 @@ const bcrypt = require("bcryptjs");
 const SellerDocument = require("../models/SellerDocument");
 const Vendor = require("../models/Vendor");
 
-// ✅ IMPORT EMAIL FUNCTIONS (only for rejection emails)
 const { 
   sendDocumentLinkEmail,
   sendApprovalEmail,
   sendRejectionEmail,
-  sendVendorCreationEmail
+  sendVendorCreationEmail,
+  sendDocumentRejectionEmail,
+  sendDocumentResubmissionEmail
 } = require("../middleware/emailService");
 
 const generateTrackingId = () => {
@@ -89,35 +90,6 @@ router.get("/documents/:trackingId", async (req, res) => {
 });
 
 // ============================================================
-// GET DOCUMENT BY EMAIL
-// ============================================================
-router.get("/documents/email/:email", async (req, res) => {
-  try {
-    const { email } = req.params;
-    
-    const document = await SellerDocument.findOne({ email });
-    
-    if (!document) {
-      return res.status(404).json({
-        success: false,
-        message: "Document not found for this email"
-      });
-    }
-    
-    res.json({
-      success: true,
-      document
-    });
-  } catch (err) {
-    console.error("❌ Error fetching documents:", err);
-    res.status(500).json({
-      success: false,
-      message: err.message
-    });
-  }
-});
-
-// ============================================================
 // CREATE DOCUMENT
 // ============================================================
 router.post("/documents/create", async (req, res) => {
@@ -160,7 +132,9 @@ router.post("/documents/create", async (req, res) => {
       email,
       company,
       trackingId,
-      status: 'draft'
+      status: 'draft',
+      brand: { description: "" },
+      logo: { image: "" }
     });
     
     await document.save();
@@ -196,7 +170,7 @@ router.post("/documents/save", async (req, res) => {
       });
     }
     
-    console.log("Saving document for tracking ID:", trackingId);
+    console.log("📝 Saving document for tracking ID:", trackingId);
     
     let document = await SellerDocument.findOne({ trackingId });
     
@@ -207,31 +181,53 @@ router.post("/documents/save", async (req, res) => {
       });
     }
     
-    // Update fields based on data received
-    if (data.aadhaar) {
-      document.aadhaar = { ...document.aadhaar, ...data.aadhaar };
+    // Handle logo
+    if (data.logo) {
+      document.logo = { ...document.logo, ...data.logo };
+      // If logo was rejected and now resubmitted, update status
+      if (document.logo.status === 'rejected' && data.logo.image) {
+        document.logo.status = 'resubmitted';
+        document.logo.resubmittedAt = new Date();
+      }
     }
-    if (data.pan) {
-      document.pan = { ...document.pan, ...data.pan };
+    
+    // Handle brand
+    if (data.brand) {
+      document.brand = { ...document.brand, ...data.brand };
+      if (document.brand.status === 'rejected' && data.brand.description) {
+        document.brand.status = 'resubmitted';
+        document.brand.resubmittedAt = new Date();
+      }
     }
-    if (data.gst) {
-      document.gst = { ...document.gst, ...data.gst };
-    }
-    if (data.bank) {
-      document.bank = { ...document.bank, ...data.bank };
-    }
-    if (data.contact) {
-      document.contact = { ...document.contact, ...data.contact };
-    }
-    if (data.business) {
-      document.business = { ...document.business, ...data.business };
-    }
-    if (data.status) {
-      document.status = data.status;
-    }
+    
+    // Handle other sections with resubmission tracking
+    const sections = ['aadhaar', 'pan', 'gst', 'bank', 'contact', 'business'];
+    sections.forEach(section => {
+      if (data[section]) {
+        document[section] = { ...document[section], ...data[section] };
+        // Check if this section was rejected and now has new data
+        if (document[section].status === 'rejected') {
+          // Check if any field in this section changed
+          let hasChanges = false;
+          const fields = Object.keys(data[section]);
+          for (const field of fields) {
+            if (data[section][field] && data[section][field] !== '') {
+              hasChanges = true;
+              break;
+            }
+          }
+          if (hasChanges) {
+            document[section].status = 'resubmitted';
+            document[section].resubmittedAt = new Date();
+          }
+        }
+      }
+    });
     
     document.lastSaved = new Date();
     await document.save();
+    
+    console.log("✅ Document saved successfully");
     
     res.json({
       success: true,
@@ -253,6 +249,9 @@ router.post("/documents/save", async (req, res) => {
 router.post("/documents/upload", upload.single("file"), async (req, res) => {
   try {
     const { trackingId, field } = req.body;
+    
+    console.log("📤 Uploading file for tracking ID:", trackingId);
+    console.log("📤 Field:", field);
     
     if (!req.file) {
       return res.status(400).json({
@@ -283,13 +282,27 @@ router.post("/documents/upload", upload.single("file"), async (req, res) => {
     const fieldParts = field.split('.');
     if (fieldParts.length === 2) {
       const [section, key] = fieldParts;
-      if (document[section]) {
+      
+      if (section === 'logo' && key === 'image') {
+        document.logo = { ...document.logo, image: fileUrl };
+        if (document.logo.status === 'rejected') {
+          document.logo.status = 'resubmitted';
+          document.logo.resubmittedAt = new Date();
+        }
+      } else if (document[section]) {
         document[section][key] = fileUrl;
+        // If this section was rejected, mark as resubmitted
+        if (document[section].status === 'rejected') {
+          document[section].status = 'resubmitted';
+          document[section].resubmittedAt = new Date();
+        }
       }
     }
     
     document.lastSaved = new Date();
     await document.save();
+    
+    console.log("✅ File uploaded successfully:", fileUrl);
     
     res.json({
       success: true,
@@ -329,12 +342,21 @@ router.post("/documents/submit", async (req, res) => {
       });
     }
 
+    // Check required fields
     const requiredFields = [
+      { field: 'brand.description', label: 'Brand Description' },
       { field: 'aadhaar.number', label: 'Aadhaar Number' },
+      { field: 'aadhaar.frontImage', label: 'Aadhaar Front Image' },
+      { field: 'aadhaar.backImage', label: 'Aadhaar Back Image' },
       { field: 'pan.number', label: 'PAN Number' },
+      { field: 'pan.image', label: 'PAN Card Image' },
+      { field: 'bank.accountHolderName', label: 'Account Holder Name' },
       { field: 'bank.accountNumber', label: 'Bank Account Number' },
       { field: 'bank.ifscCode', label: 'IFSC Code' },
-      { field: 'contact.phone', label: 'Phone Number' }
+      { field: 'bank.bankName', label: 'Bank Name' },
+      { field: 'contact.phone', label: 'Phone Number' },
+      { field: 'contact.address', label: 'Address' },
+      { field: 'business.registrationType', label: 'Business Type' }
     ];
     
     const missingFields = [];
@@ -345,7 +367,7 @@ router.post("/documents/submit", async (req, res) => {
         value = value[part];
         if (!value) break;
       }
-      if (!value) {
+      if (!value || (typeof value === 'string' && value.trim() === '')) {
         missingFields.push(reqField.label);
       }
     }
@@ -353,8 +375,16 @@ router.post("/documents/submit", async (req, res) => {
     if (missingFields.length > 0) {
       return res.status(400).json({
         success: false,
-        message: "Please fill all required fields",
+        message: `Please fill all required fields: ${missingFields.join(', ')}`,
         missingFields
+      });
+    }
+    
+    // Validate brand description minimum length
+    if (document.brand && document.brand.description && document.brand.description.length < 20) {
+      return res.status(400).json({
+        success: false,
+        message: "Brand description must be at least 20 characters long"
       });
     }
     
@@ -369,6 +399,298 @@ router.post("/documents/submit", async (req, res) => {
     });
   } catch (err) {
     console.error("❌ Error submitting documents:", err);
+    res.status(500).json({
+      success: false,
+      message: err.message
+    });
+  }
+});
+
+// ============================================================
+// ADMIN - REJECT SPECIFIC DOCUMENT
+// ============================================================
+router.patch("/admin/documents/:documentId/reject-section", async (req, res) => {
+  try {
+    const { documentId } = req.params;
+    const { section, reason } = req.body;
+    
+    console.log(`📝 [REJECT] Rejecting ${section} for document: ${documentId}`);
+    console.log(`📝 [REJECT] Reason: ${reason}`);
+    
+    if (!section || !reason) {
+      return res.status(400).json({
+        success: false,
+        message: "Section and reason are required"
+      });
+    }
+    
+    const document = await SellerDocument.findById(documentId);
+    
+    if (!document) {
+      return res.status(404).json({
+        success: false,
+        message: "Document not found"
+      });
+    }
+    
+    // Check if section exists
+    const sectionFields = ['logo', 'brand', 'aadhaar', 'pan', 'gst', 'bank', 'contact', 'business'];
+    if (!sectionFields.includes(section)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid section"
+      });
+    }
+    
+    // Update section status
+    document[section].status = 'rejected';
+    document[section].rejectionReason = reason;
+    document[section].resubmittedAt = null;
+    
+    // Update overall document status
+    document.status = 'partially_rejected';
+    
+    await document.save();
+    
+    // Send rejection email for this specific section
+    const sectionLabels = {
+      logo: 'Company Logo',
+      brand: 'Brand Description',
+      aadhaar: 'Aadhaar Details',
+      pan: 'PAN Details',
+      gst: 'GST Details',
+      bank: 'Bank Details',
+      contact: 'Contact Information',
+      business: 'Business Information'
+    };
+    
+    try {
+      await sendDocumentRejectionEmail(
+        document.email,
+        document.company || 'Seller',
+        sectionLabels[section] || section,
+        reason
+      );
+      console.log(`📧 Rejection email sent for ${section} to: ${document.email}`);
+    } catch (emailErr) {
+      console.error("❌ Email error:", emailErr);
+    }
+    
+    res.json({
+      success: true,
+      message: `${section} rejected successfully`,
+      document
+    });
+  } catch (err) {
+    console.error("❌ Error rejecting section:", err);
+    res.status(500).json({
+      success: false,
+      message: err.message
+    });
+  }
+});
+
+// ============================================================
+// ADMIN - VERIFY SPECIFIC DOCUMENT
+// ============================================================
+router.patch("/admin/documents/:documentId/verify-section", async (req, res) => {
+  try {
+    const { documentId } = req.params;
+    const { section } = req.body;
+    
+    console.log(`📝 [VERIFY] Verifying ${section} for document: ${documentId}`);
+    
+    if (!section) {
+      return res.status(400).json({
+        success: false,
+        message: "Section is required"
+      });
+    }
+    
+    const document = await SellerDocument.findById(documentId);
+    
+    if (!document) {
+      return res.status(404).json({
+        success: false,
+        message: "Document not found"
+      });
+    }
+    
+    // Check if section exists
+    const sectionFields = ['logo', 'brand', 'aadhaar', 'pan', 'gst', 'bank', 'contact', 'business'];
+    if (!sectionFields.includes(section)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid section"
+      });
+    }
+    
+    // Update section status
+    document[section].status = 'verified';
+    document[section].rejectionReason = "";
+    document[section].resubmittedAt = null;
+    
+    // Check if all sections are verified
+    let allVerified = true;
+    const requiredSections = ['brand', 'aadhaar', 'pan', 'bank', 'contact', 'business'];
+    for (const sec of requiredSections) {
+      if (document[sec].status !== 'verified') {
+        allVerified = false;
+        break;
+      }
+    }
+    
+    if (allVerified) {
+      document.status = 'verified';
+      document.verificationDate = new Date();
+      
+      // Create vendor account
+      const generatePassword = () => {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
+        let password = '';
+        for (let i = 0; i < 12; i++) {
+          password += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        return password;
+      };
+      
+      const tempPassword = generatePassword();
+      const hashedPassword = await bcrypt.hash(tempPassword, 10);
+      
+      let vendor = await Vendor.findOne({ email: document.email });
+      
+      if (!vendor) {
+        vendor = new Vendor({
+          name: document.company || document.email.split('@')[0],
+          email: document.email,
+          password: hashedPassword,
+          role: 'vendor',
+          company: document.company || 'N/A',
+          plan: 'founding',
+          status: 'active',
+          planUpdatedAt: new Date(),
+          totalOrders: 0,
+          commissionRate: 0,
+          statusHistory: [{
+            status: 'active',
+            previousStatus: null,
+            changedBy: 'System',
+            changedByName: 'Admin',
+            reason: 'Vendor created from document verification',
+            timestamp: new Date()
+          }]
+        });
+        await vendor.save();
+        console.log(`✅ New vendor created: ${document.email}`);
+      } else {
+        vendor.password = hashedPassword;
+        vendor.status = 'active';
+        vendor.company = document.company || vendor.company;
+        vendor.plan = 'founding';
+        vendor.commissionRate = 0;
+        vendor.planUpdatedAt = new Date();
+        
+        if (!vendor.statusHistory) {
+          vendor.statusHistory = [];
+        }
+        vendor.statusHistory.push({
+          status: 'active',
+          previousStatus: vendor.status,
+          changedBy: 'System',
+          changedByName: 'Admin',
+          reason: 'Account activated from document verification',
+          timestamp: new Date()
+        });
+        await vendor.save();
+        console.log(`✅ Existing vendor updated: ${document.email}`);
+      }
+      
+      document.vendorId = vendor._id;
+      document.credentialsSent = true;
+      document.credentialsSentAt = new Date();
+      
+      // Send vendor creation email
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      const loginUrl = `${frontendUrl}/login`;
+      
+      try {
+        await sendVendorCreationEmail(
+          document.email,
+          document.company || "Vendor",
+          document.company || "N/A",
+          tempPassword,
+          vendor.plan || 'founding',
+          vendor.commissionRate || 0,
+          loginUrl,
+          "Admin"
+        );
+        console.log(`✅ Credentials email sent to: ${document.email}`);
+      } catch (emailErr) {
+        console.error("❌ Credentials email error:", emailErr);
+      }
+    } else {
+      // Check if any sections are still rejected
+      let hasRejected = false;
+      for (const sec of requiredSections) {
+        if (document[sec].status === 'rejected') {
+          hasRejected = true;
+          break;
+        }
+      }
+      document.status = hasRejected ? 'partially_rejected' : 'pending_review';
+    }
+    
+    await document.save();
+    
+    res.json({
+      success: true,
+      message: `${section} verified successfully`,
+      document,
+      allVerified: allVerified
+    });
+  } catch (err) {
+    console.error("❌ Error verifying section:", err);
+    res.status(500).json({
+      success: false,
+      message: err.message
+    });
+  }
+});
+
+// ============================================================
+// ADMIN - GET DOCUMENT WITH SECTION STATUS
+// ============================================================
+router.get("/admin/documents/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const document = await SellerDocument.findById(id);
+    
+    if (!document) {
+      return res.status(404).json({
+        success: false,
+        message: "Document not found"
+      });
+    }
+    
+    // Prepare section status summary
+    const sections = ['logo', 'brand', 'aadhaar', 'pan', 'gst', 'bank', 'contact', 'business'];
+    const sectionStatus = {};
+    sections.forEach(section => {
+      sectionStatus[section] = {
+        status: document[section]?.status || 'pending',
+        rejectionReason: document[section]?.rejectionReason || '',
+        resubmittedAt: document[section]?.resubmittedAt || null
+      };
+    });
+    
+    res.json({
+      success: true,
+      document,
+      sectionStatus
+    });
+  } catch (err) {
+    console.error("❌ Error fetching document:", err);
     res.status(500).json({
       success: false,
       message: err.message
@@ -416,333 +738,6 @@ router.get("/admin/documents", async (req, res) => {
 });
 
 // ============================================================
-// ADMIN - GET SINGLE DOCUMENT
-// ============================================================
-router.get("/admin/documents/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    
-    const document = await SellerDocument.findById(id);
-    
-    if (!document) {
-      return res.status(404).json({
-        success: false,
-        message: "Document not found"
-      });
-    }
-    
-    res.json({
-      success: true,
-      document
-    });
-  } catch (err) {
-    console.error("❌ Error fetching document:", err);
-    res.status(500).json({
-      success: false,
-      message: err.message
-    });
-  }
-});
-
-// ============================================================
-// ADMIN - APPROVE APPLICATION (NO EMAIL - Frontend handles it)
-// ============================================================
-router.post("/sellers/applications/:id/approve", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { notes } = req.body;
-    
-    console.log(`📝 [APPROVE] Approving application: ${id}`);
-    
-    // Find the application
-    const Application = require("../models/Application");
-    const application = await Application.findById(id);
-    
-    if (!application) {
-      return res.status(404).json({
-        success: false,
-        message: "Application not found"
-      });
-    }
-    
-    console.log(`📝 [APPROVE] Application: ${application.businessName}, Email: ${application.email}`);
-    
-    // Update status
-    application.status = 'approved';
-    application.adminNotes = notes || '';
-    application.verifiedAt = new Date();
-    await application.save();
-    
-    console.log(`✅ [APPROVE] Application status updated to approved`);
-    
-    // Get or create document tracking ID
-    let docTrackingId = application.documentTrackingId;
-    
-    if (!docTrackingId) {
-      const existingDoc = await SellerDocument.findOne({ 
-        email: application.email 
-      });
-      
-      if (existingDoc) {
-        docTrackingId = existingDoc.trackingId;
-        console.log(`📄 [APPROVE] Found existing document: ${docTrackingId}`);
-      } else {
-        let trackingId;
-        let isUnique = false;
-        let attempts = 0;
-        while (!isUnique && attempts < 10) {
-          trackingId = generateTrackingId();
-          const existingDoc = await SellerDocument.findOne({ trackingId });
-          if (!existingDoc) isUnique = true;
-          attempts++;
-        }
-        
-        if (!isUnique) {
-          throw new Error("Failed to generate unique tracking ID");
-        }
-        
-        const newDoc = new SellerDocument({
-          email: application.email,
-          company: application.businessName,
-          trackingId: trackingId,
-          status: 'draft'
-        });
-        await newDoc.save();
-        docTrackingId = trackingId;
-        console.log(`📄 [APPROVE] Created new document: ${docTrackingId}`);
-      }
-    }
-    
-    // Save tracking ID on application
-    application.documentTrackingId = docTrackingId;
-    await application.save();
-    
-    // ========================================================
-    // ⚠️ IMPORTANT: NO EMAIL SENT HERE!
-    // The frontend will handle sending the approval email
-    // via /send-approval-email endpoint
-    // ========================================================
-    
-    console.log(`✅ [APPROVE] Application approved successfully`);
-    console.log(`📄 [APPROVE] Document Tracking ID: ${docTrackingId}`);
-    console.log(`📧 [APPROVE] NO EMAIL SENT - Frontend will handle it`);
-    
-    return res.json({
-      success: true,
-      message: `Application approved successfully`,
-      application,
-      trackingId: docTrackingId,
-      vendorId: null // No vendor created here
-    });
-    
-  } catch (err) {
-    console.error(`❌ [APPROVE] Error:`, err);
-    res.status(500).json({
-      success: false,
-      message: err.message
-    });
-  }
-});
-
-router.patch("/admin/documents/verify/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { status, rejectionReason } = req.body;
-    
-    if (!['verified', 'rejected'].includes(status)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid status. Use 'verified' or 'rejected'"
-      });
-    }
-    
-    const document = await SellerDocument.findById(id);
-    
-    if (!document) {
-      return res.status(404).json({
-        success: false,
-        message: "Document not found"
-      });
-    }
-    
-    document.status = status;
-    document.verificationDate = new Date();
-    
-    // =================== REJECTED ===================
-    if (status === 'rejected') {
-      document.rejectionReason = rejectionReason;
-      await document.save();
-      
-      try {
-        await sendRejectionEmail(
-          document.email,
-          document.company || "Seller",
-          document.company,
-          rejectionReason || "No reason provided"
-        );
-        console.log(`📧 Rejection email sent to: ${document.email}`);
-      } catch (emailErr) {
-        console.error("❌ Rejection email error:", emailErr);
-      }
-      
-      return res.json({
-        success: true,
-        message: `✅ Documents rejected. Email sent to ${document.email}`,
-        document
-      });
-    }
-    
-    // =================== VERIFIED ===================
-    if (status === 'verified') {
-      console.log(`✅ Documents verified for: ${document.email}`);
-      
-      // Generate random password
-      const generatePassword = () => {
-        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
-        let password = '';
-        for (let i = 0; i < 12; i++) {
-          password += chars.charAt(Math.floor(Math.random() * chars.length));
-        }
-        return password;
-      };
-      
-      const tempPassword = generatePassword();
-      const hashedPassword = await bcrypt.hash(tempPassword, 10);
-      
-      // Check if vendor already exists
-      let vendor = await Vendor.findOne({ email: document.email });
-      
-      if (!vendor) {
-        // Create new vendor
-        vendor = new Vendor({
-          name: document.company || document.email.split('@')[0],
-          email: document.email,
-          password: hashedPassword,
-          role: 'vendor',
-          company: document.company || 'N/A',
-          plan: 'founding',
-          status: 'active',
-          planUpdatedAt: new Date(),
-          totalOrders: 0,
-          commissionRate: 0,
-          statusHistory: [{
-            status: 'active',
-            previousStatus: null,
-            changedBy: 'System',
-            changedByName: 'Admin',
-            reason: 'Vendor created from document verification',
-            timestamp: new Date()
-          }]
-        });
-        await vendor.save();
-        console.log(`✅ New vendor created: ${document.email}`);
-      } else {
-        // Update existing vendor
-        vendor.password = hashedPassword;
-        vendor.status = 'active';
-        vendor.company = document.company || vendor.company;
-        vendor.plan = 'founding';
-        vendor.commissionRate = 0;
-        vendor.planUpdatedAt = new Date();
-        
-        if (!vendor.statusHistory) {
-          vendor.statusHistory = [];
-        }
-        vendor.statusHistory.push({
-          status: 'active',
-          previousStatus: vendor.status,
-          changedBy: 'System',
-          changedByName: 'Admin',
-          reason: 'Account activated from document verification',
-          timestamp: new Date()
-        });
-        
-        await vendor.save();
-        console.log(`✅ Existing vendor updated: ${document.email}`);
-      }
-      
-      // Update document with vendor ID
-      document.vendorId = vendor._id;
-      document.credentialsSent = true;
-      document.credentialsSentAt = new Date();
-      await document.save();
-      
-      // ========================================================
-      // ✅ SEND CREDENTIALS EMAIL USING THE EXISTING FUNCTION
-      // ========================================================
-      
-      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-      const loginUrl = `${frontendUrl}/login`;
-      
-      try {
-        const emailResult = await sendVendorCreationEmail(
-          document.email,
-          document.company || "Vendor",
-          document.company || "N/A",
-          tempPassword,
-          vendor.plan || 'founding',
-          vendor.commissionRate || 0,
-          loginUrl,
-          "Admin"
-        );
-        
-        if (emailResult.success) {
-          console.log(`✅ Credentials email sent to: ${document.email}`);
-          
-          return res.json({
-            success: true,
-            message: `✅ Documents verified. Vendor created and credentials sent to ${document.email}`,
-            document,
-            vendor: {
-              id: vendor._id,
-              email: vendor.email,
-              password: tempPassword
-            },
-            emailSent: true
-          });
-        } else {
-          console.error("❌ Credentials email failed:", emailResult.error);
-          
-          return res.json({
-            success: true,
-            message: `✅ Documents verified and vendor created, but credentials email failed. Please resend manually.`,
-            document,
-            vendor: {
-              id: vendor._id,
-              email: vendor.email
-            },
-            emailSent: false,
-            emailError: emailResult.error
-          });
-        }
-        
-      } catch (emailErr) {
-        console.error("❌ Credentials email error:", emailErr);
-        
-        return res.json({
-          success: true,
-          message: `✅ Documents verified and vendor created, but credentials email failed. Please resend manually.`,
-          document,
-          vendor: {
-            id: vendor._id,
-            email: vendor.email
-          },
-          emailSent: false,
-          emailError: emailErr.message
-        });
-      }
-    }
-    
-  } catch (err) {
-    console.error("❌ Error verifying documents:", err);
-    res.status(500).json({
-      success: false,
-      message: err.message
-    });
-  }
-});
-
-// ============================================================
 // ADMIN - GET STATS
 // ============================================================
 router.get("/admin/documents/stats", async (req, res) => {
@@ -762,6 +757,8 @@ router.get("/admin/documents/stats", async (req, res) => {
       total,
       draft: 0,
       submitted: 0,
+      pending_review: 0,
+      partially_rejected: 0,
       verified: 0,
       rejected: 0
     };
@@ -784,6 +781,26 @@ router.get("/admin/documents/stats", async (req, res) => {
 });
 
 // ============================================================
+// OTHER ROUTES (keep existing)
+// ============================================================
+router.get("/documents/email/:email", async (req, res) => {
+  try {
+    const { email } = req.params;
+    const document = await SellerDocument.findOne({ email });
+    if (!document) {
+      return res.status(404).json({
+        success: false,
+        message: "Document not found for this email"
+      });
+    }
+    res.json({ success: true, document });
+  } catch (err) {
+    console.error("❌ Error fetching documents:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ============================================================
 // SEND DOCUMENT LINK EMAIL
 // ============================================================
 router.post("/documents/send-link", async (req, res) => {
@@ -800,7 +817,6 @@ router.post("/documents/send-link", async (req, res) => {
       });
     }
 
-    // Check if document exists
     const document = await SellerDocument.findOne({ trackingId });
     if (!document) {
       return res.status(404).json({
@@ -812,7 +828,6 @@ router.post("/documents/send-link", async (req, res) => {
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3001";
     const link = `${frontendUrl}/document-upload/${trackingId}`;
 
-    // Try to send email, but always return the link
     let emailResult;
     try {
       emailResult = await sendDocumentLinkEmail(
@@ -825,7 +840,6 @@ router.post("/documents/send-link", async (req, res) => {
       emailResult = { success: false, error: emailErr.message, link: link };
     }
 
-    // Always return success with the link
     res.json({
       success: true,
       message: emailResult.success 
@@ -847,17 +861,13 @@ router.post("/documents/send-link", async (req, res) => {
 });
 
 // ============================================================
-// SEND APPROVAL EMAIL (Manual - NO PASSWORD)
+// SEND APPROVAL EMAIL
 // ============================================================
 router.post("/send-approval-email", async (req, res) => {
   try {
     const { email, name, company, vendorId, trackingId } = req.body;
     
-    console.log("📧 [send-approval-email] Received request:");
-    console.log(`   Email: ${email}`);
-    console.log(`   Name: ${name}`);
-    console.log(`   Company: ${company}`);
-    console.log(`   Tracking ID: ${trackingId}`);
+    console.log("📧 [send-approval-email] Received request:", { email, name, company, trackingId });
     
     if (!email || !name || !company) {
       return res.status(400).json({
@@ -866,16 +876,12 @@ router.post("/send-approval-email", async (req, res) => {
       });
     }
 
-    // If no tracking ID, try to find or create one
     let finalTrackingId = trackingId;
     
     if (!finalTrackingId) {
-      console.log("⚠️ [send-approval-email] No tracking ID provided, trying to find/create one...");
-      
       const existingDoc = await SellerDocument.findOne({ email });
       if (existingDoc) {
         finalTrackingId = existingDoc.trackingId;
-        console.log("📄 [send-approval-email] Found existing document:", finalTrackingId);
       } else {
         let newTrackingId;
         let isUnique = false;
@@ -895,17 +901,16 @@ router.post("/send-approval-email", async (req, res) => {
           email,
           company,
           trackingId: newTrackingId,
-          status: 'draft'
+          status: 'draft',
+          brand: { description: "" },
+          logo: { image: "" }
         });
         await newDoc.save();
         finalTrackingId = newTrackingId;
-        console.log("📄 [send-approval-email] Created new document:", finalTrackingId);
       }
     }
 
     const result = await sendApprovalEmail(email, name, company, vendorId, finalTrackingId);
-    
-    console.log("📧 [send-approval-email] Result:", result);
     
     if (result.success) {
       res.json({
@@ -937,7 +942,6 @@ router.post("/send-rejection-email", async (req, res) => {
     const { email, name, company, reason } = req.body;
     
     console.log("📧 Sending rejection email to:", email);
-    console.log("📝 Reason:", reason);
     
     if (!email || !name || !company || !reason) {
       return res.status(400).json({
@@ -961,62 +965,6 @@ router.post("/send-rejection-email", async (req, res) => {
     }
   } catch (err) {
     console.error("❌ Send rejection email error:", err);
-    res.status(500).json({
-      success: false,
-      message: err.message
-    });
-  }
-});
-
-// ============================================================
-// CHECK DOCUMENT STATUS WITH VENDOR INFO
-// ============================================================
-router.get("/documents/status/:trackingId", async (req, res) => {
-  try {
-    const { trackingId } = req.params;
-    
-    const document = await SellerDocument.findOne({ trackingId });
-    
-    if (!document) {
-      return res.status(404).json({
-        success: false,
-        message: "Document not found"
-      });
-    }
-    
-    let vendorInfo = null;
-    if (document.status === 'verified' && document.vendorId) {
-      const vendor = await Vendor.findById(document.vendorId).select('-password');
-      if (vendor) {
-        vendorInfo = {
-          id: vendor._id,
-          name: vendor.name,
-          email: vendor.email,
-          company: vendor.company,
-          plan: vendor.plan,
-          status: vendor.status,
-          createdAt: vendor.createdAt
-        };
-      }
-    }
-    
-    res.json({
-      success: true,
-      document: {
-        trackingId: document.trackingId,
-        email: document.email,
-        company: document.company,
-        status: document.status,
-        submissionDate: document.submissionDate,
-        verificationDate: document.verificationDate,
-        rejectionReason: document.rejectionReason,
-        credentialsSent: document.credentialsSent || false,
-        credentialsSentAt: document.credentialsSentAt || null
-      },
-      vendor: vendorInfo
-    });
-  } catch (err) {
-    console.error("❌ Error checking document status:", err);
     res.status(500).json({
       success: false,
       message: err.message

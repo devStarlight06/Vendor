@@ -523,3 +523,197 @@
     padding: 0.5rem 0.75rem;
   }
 }
+/* Logo Preview Styles */
+.logo-preview {
+  background: #f8f9fa;
+  border: 2px dashed #dee2e6;
+  border-radius: 12px;
+  padding: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.logo-thumbnail {
+  width: 80px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
+}
+
+.logo-preview .file-info {
+  flex: 1;
+}
+
+.logo-preview .file-name {
+  font-weight: 500;
+  color: #212529;
+  font-size: 0.9rem;
+}
+
+.logo-preview .file-size {
+  font-size: 0.8rem;
+  color: #6c757d;
+}
+
+.logo-preview .file-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.logo-preview .btn-icon {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 6px;
+  background: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  cursor: pointer;
+  color: #6c757d;
+}
+
+.logo-preview .btn-icon:hover {
+  background: #e9ecef;
+}
+
+.logo-preview .btn-icon.view {
+  color: #0d6efd;
+}
+
+.logo-preview .btn-icon.remove {
+  color: #dc3545;
+}
+
+.logo-preview .btn-icon.remove:hover {
+  background: #f8d7da;
+}
+
+/* Step indicator update for 7 steps */
+.step-circle {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #e9ecef;
+  color: #6c757d;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.875rem;
+  transition: all 0.3s;
+}
+
+.step-circle.active {
+  background: #0d6efd;
+  color: white;
+  box-shadow: 0 0 0 4px rgba(13, 110, 253, 0.2);
+}
+
+.step-circle.completed {
+  background: #198754;
+  color: white;
+}
+
+/* File input wrapper */
+.file-input-wrapper {
+  position: relative;
+}
+
+.file-input-wrapper input[type="file"] {
+  display: block;
+  width: 100%;
+  padding: 0.75rem;
+  border: 2px dashed #dee2e6;
+  border-radius: 8px;
+  background: #f8f9fa;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.file-input-wrapper input[type="file"]:hover {
+  border-color: #0d6efd;
+  background: #f1f3f5;
+}
+
+.file-input-wrapper input[type="file"]:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Required field star */
+.required {
+  color: #dc3545;
+  margin-left: 2px;
+}
+/* Brand Description Textarea */
+.brand-description-textarea {
+  resize: vertical;
+  min-height: 120px;
+  transition: all 0.3s ease;
+}
+
+.brand-description-textarea:focus {
+  border-color: #0d6efd;
+  box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.1);
+}
+
+.brand-description-textarea::placeholder {
+  color: #adb5bd;
+  font-style: italic;
+}
+
+/* Character counter for description */
+.character-counter {
+  font-size: 0.8rem;
+  color: #6c757d;
+  text-align: right;
+  margin-top: 0.25rem;
+}
+
+.character-counter.warning {
+  color: #ffc107;
+}
+
+.character-counter.danger {
+  color: #dc3545;
+}
+
+/* Optional field indicator */
+.optional-badge {
+  font-size: 0.7rem;
+  font-weight: 400;
+  color: #6c757d;
+  background: #e9ecef;
+  padding: 0.15rem 0.5rem;
+  border-radius: 20px;
+  margin-left: 0.5rem;
+}
+
+/* Brand info step icon styles */
+.step-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  background: #f8f9fa;
+  color: #6c757d;
+  transition: all 0.3s;
+}
+
+.step-icon.active {
+  background: #0d6efd;
+  color: white;
+}
+
+.step-icon.completed {
+  background: #198754;
+  color: white;
+}

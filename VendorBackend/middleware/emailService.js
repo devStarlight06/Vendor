@@ -1057,13 +1057,241 @@ const sendDocumentLinkEmail = async (email, trackingId, company) => {
     };
   }
 };
+const sendDocumentRejectionEmail = async (email, company, documentName, reason) => {
+  try {
+    console.log(`📧 Sending document rejection email to: ${email}`);
+    console.log(`📧 Document: ${documentName}`);
+    
+    const transporter = createTransporter();
+
+    if (!transporter) {
+      return { success: false, error: "Email not configured" };
+    }
+
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+    const uploadLink = `${frontendUrl}/document-upload/`;
+
+    // Find the document to get tracking ID
+    const SellerDocument = require("../models/SellerDocument");
+    const document = await SellerDocument.findOne({ email });
+    const trackingId = document?.trackingId || '';
+    const fullLink = `${uploadLink}${trackingId}`;
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Document Rejected - Native91</title>
+        <style>
+          body { font-family: Arial, Helvetica, sans-serif; line-height: 1.6; color: #333333; background-color: #f4f4f4; margin: 0; padding: 0; }
+          .container { max-width: 600px; margin: 20px auto; padding: 0; background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+          .header { background-color: #dc3545; padding: 30px 20px; text-align: center; border-radius: 8px 8px 0 0; }
+          .header h1 { color: #ffffff; margin: 0; font-size: 24px; font-weight: 600; }
+          .content { padding: 30px 30px 20px; }
+          .greeting { font-size: 16px; margin-bottom: 20px; }
+          .greeting strong { color: #1a2a3a; }
+          .message { font-size: 15px; line-height: 1.8; color: #444444; margin-bottom: 15px; }
+          .document-box { background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px 20px; margin: 20px 0; border-radius: 4px; }
+          .document-box strong { color: #856404; font-size: 14px; }
+          .document-box .doc-name { color: #856404; font-size: 16px; font-weight: 600; }
+          .reason-box { background-color: #f8d7da; border-left: 4px solid #dc3545; padding: 15px 20px; margin: 15px 0; border-radius: 4px; }
+          .reason-box strong { color: #721c24; font-size: 14px; }
+          .reason-box p { margin: 8px 0 0; color: #721c24; font-size: 14px; }
+          .button-container { text-align: center; margin: 30px 0 20px; }
+          .button { display: inline-block; padding: 12px 35px; background-color: #28a745; color: #ffffff; text-decoration: none; border-radius: 5px; font-weight: 600; font-size: 15px; }
+          .button:hover { background-color: #218838; }
+          .next-steps { margin: 25px 0 20px; }
+          .next-steps h4 { color: #1a2a3a; font-size: 15px; margin-bottom: 10px; }
+          .next-steps ul { padding-left: 20px; margin: 0; }
+          .next-steps ul li { padding: 4px 0; font-size: 14px; color: #444444; }
+          .support-box { background-color: #f8f9fa; border-left: 4px solid #6c757d; padding: 15px 20px; margin: 25px 0 10px; border-radius: 4px; }
+          .support-box strong { color: #1a2a3a; font-size: 14px; }
+          .support-box p { margin: 5px 0 0; font-size: 13px; color: #555555; }
+          .support-box a { color: #007bff; text-decoration: none; }
+          .support-box a:hover { text-decoration: underline; }
+          .footer { padding: 20px 30px; text-align: center; border-top: 1px solid #e9ecef; font-size: 12px; color: #6c757d; }
+          .footer p { margin: 3px 0; }
+          @media only screen and (max-width: 480px) { .container { margin: 10px; } .content { padding: 20px; } }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>Document Rejected</h1>
+          </div>
+          <div class="content">
+            <div class="greeting">
+              Dear <strong>${company || "Seller"}</strong>,
+            </div>
+            
+            <div class="message">
+              We have reviewed your submitted documents and found an issue with one of them.
+            </div>
+
+            <div class="document-box">
+              <strong>Document Rejected:</strong>
+              <div class="doc-name">${documentName}</div>
+            </div>
+
+            <div class="reason-box">
+              <strong>Reason for Rejection:</strong>
+              <p>${reason || "No specific reason provided"}</p>
+            </div>
+
+            <div class="message">
+              Please correct the issue and resubmit only this document. You do not need to re-upload all your documents.
+            </div>
+
+            <div class="button-container">
+              <a href="${fullLink}" class="button">Resubmit Document</a>
+            </div>
+
+            <div class="next-steps">
+              <h4>What To Do Next:</h4>
+              <ul>
+                <li>Review the rejection reason provided above</li>
+                <li>Correct the issue with the rejected document</li>
+                <li>Click the "Resubmit Document" button above</li>
+                <li>Only upload the corrected version of the rejected document</li>
+                <li>After resubmission, our team will review it again</li>
+              </ul>
+            </div>
+
+            <div class="support-box">
+              <strong>Need Help?</strong>
+              <p>If you have any questions, please contact our support team at <a href="mailto:support@native91.com">support@native91.com</a></p>
+            </div>
+          </div>
+          <div class="footer">
+            <p>&copy; ${new Date().getFullYear()} Native91. All rights reserved.</p>
+            <p>This is an automated message, please do not reply to this email.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const mailOptions = {
+      from: `"Native91" <${process.env.EMAIL_FROM || process.env.SMTP_USER}>`,
+      to: email,
+      subject: `Document Rejected: ${documentName} - Native91`,
+      html: htmlContent,
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`✅ Document rejection email sent to: ${email}`);
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    console.error("❌ Document rejection email error:", error.message);
+    return { success: false, error: error.message };
+  }
+};
 
 // ============================================================
-// MODULE EXPORTS
+// SEND DOCUMENT RESUBMISSION EMAIL (To Admin)
 // ============================================================
+const sendDocumentResubmissionEmail = async (email, company, documentName, trackingId) => {
+  try {
+    console.log(`📧 Sending resubmission notification to admin for: ${email}`);
+    
+    const transporter = createTransporter();
+
+    if (!transporter) {
+      return { success: false, error: "Email not configured" };
+    }
+
+    const adminEmail = process.env.ADMIN_EMAIL || 'support@native91.com';
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Document Resubmitted - Native91</title>
+        <style>
+          body { font-family: Arial, Helvetica, sans-serif; line-height: 1.6; color: #333333; background-color: #f4f4f4; margin: 0; padding: 0; }
+          .container { max-width: 600px; margin: 20px auto; padding: 0; background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+          .header { background-color: #17a2b8; padding: 30px 20px; text-align: center; border-radius: 8px 8px 0 0; }
+          .header h1 { color: #ffffff; margin: 0; font-size: 24px; font-weight: 600; }
+          .content { padding: 30px 30px 20px; }
+          .greeting { font-size: 16px; margin-bottom: 20px; }
+          .message { font-size: 15px; line-height: 1.8; color: #444444; margin-bottom: 15px; }
+          .info-box { background-color: #d1ecf1; border-left: 4px solid #17a2b8; padding: 15px 20px; margin: 20px 0; border-radius: 4px; }
+          .info-box strong { color: #0c5460; font-size: 14px; }
+          .info-box .doc-name { color: #0c5460; font-size: 16px; font-weight: 600; }
+          .info-box .vendor-info { color: #0c5460; font-size: 14px; margin-top: 8px; }
+          .button-container { text-align: center; margin: 30px 0 20px; }
+          .button { display: inline-block; padding: 12px 35px; background-color: #17a2b8; color: #ffffff; text-decoration: none; border-radius: 5px; font-weight: 600; font-size: 15px; }
+          .button:hover { background-color: #138496; }
+          .footer { padding: 20px 30px; text-align: center; border-top: 1px solid #e9ecef; font-size: 12px; color: #6c757d; }
+          .footer p { margin: 3px 0; }
+          @media only screen and (max-width: 480px) { .container { margin: 10px; } .content { padding: 20px; } }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>Document Resubmitted</h1>
+          </div>
+          <div class="content">
+            <div class="greeting">
+              Dear <strong>Admin</strong>,
+            </div>
+            
+            <div class="message">
+              A vendor has resubmitted a document for review.
+            </div>
+
+            <div class="info-box">
+              <strong>Resubmission Details:</strong>
+              <div class="doc-name">Document: ${documentName}</div>
+              <div class="vendor-info">Vendor: ${company || "N/A"}</div>
+              <div class="vendor-info">Email: ${email}</div>
+              <div class="vendor-info">Tracking ID: ${trackingId || "N/A"}</div>
+            </div>
+
+            <div class="message">
+              Please review the resubmitted document and verify it.
+            </div>
+
+            <div class="button-container">
+              <a href="${process.env.ADMIN_URL || 'http://localhost:3000/admin/documents'}" class="button">Review Documents</a>
+            </div>
+          </div>
+          <div class="footer">
+            <p>&copy; ${new Date().getFullYear()} Native91. All rights reserved.</p>
+            <p>This is an automated message, please do not reply to this email.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const mailOptions = {
+      from: `"Native91" <${process.env.EMAIL_FROM || process.env.SMTP_USER}>`,
+      to: adminEmail,
+      subject: `Document Resubmitted: ${documentName} - Native91`,
+      html: htmlContent,
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`✅ Resubmission notification sent to admin`);
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    console.error("❌ Resubmission email error:", error.message);
+    return { success: false, error: error.message };
+  }
+};
+
+// Add to module exports
 module.exports = {
   sendDocumentLinkEmail,
   sendApprovalEmail,
   sendRejectionEmail,
   sendVendorCreationEmail,
+  sendDocumentRejectionEmail,
+  sendDocumentResubmissionEmail
 };

@@ -38,12 +38,18 @@ import {
   FaStore,
   FaEnvelope,
   FaUserCircle,
-  FaExclamationTriangle, // ✅ ADDED THIS
+  FaExclamationTriangle,
+  FaImage,
+  FaInfoCircle,
 } from "react-icons/fa";
 import axios from "axios";
 import "./publicDocumentUpload.css";
-const API_URL =  "https://api-vendor.native91.com/api/seller";
-const API_BASE =  "https://api-vendor.native91.com"; // ✅ ADDED THIS
+
+// const API_URL = "http://localhost:5177/api/seller";
+// const API_BASE = "http://localhost:5177";
+
+const API_URL = "https://api-vendor.native91.com/api/seller";
+const API_BASE = "https://api-vendor.native91.com";
 
 const PublicDocumentUpload = () => {
   const { trackingId } = useParams();
@@ -65,6 +71,9 @@ const PublicDocumentUpload = () => {
   const [progress, setProgress] = useState(0);
 
   const [formData, setFormData] = useState({
+    // ✅ Logo + Brand Description (Description is REQUIRED)
+    logo: { image: "" },
+    brand: { description: "" }, // ✅ REQUIRED field
     aadhaar: { number: "", frontImage: "", backImage: "" },
     pan: { number: "", image: "" },
     gst: { number: "", certificate: "" },
@@ -117,6 +126,9 @@ const PublicDocumentUpload = () => {
           setLastSaved(doc.lastSaved);
           
           setFormData({
+            // ✅ Load logo and brand description
+            logo: doc.logo || { image: "" },
+            brand: doc.brand || { description: "" },
             aadhaar: doc.aadhaar || { number: "", frontImage: "", backImage: "" },
             pan: doc.pan || { number: "", image: "" },
             gst: doc.gst || { number: "", certificate: "" },
@@ -164,6 +176,7 @@ const PublicDocumentUpload = () => {
     let total = 0;
     
     const fields = [
+      formData.brand.description, // ✅ Brand description added to progress
       formData.aadhaar.number,
       formData.aadhaar.frontImage,
       formData.aadhaar.backImage,
@@ -306,6 +319,7 @@ const PublicDocumentUpload = () => {
   // ================= SUBMIT DOCUMENTS =================
   const handleSubmit = async () => {
     const required = [
+      { section: 'brand', field: 'description', label: 'Brand Description' }, // ✅ Added brand description to required
       { section: 'aadhaar', field: 'number', label: 'Aadhaar Number' },
       { section: 'aadhaar', field: 'frontImage', label: 'Aadhaar Front Image' },
       { section: 'aadhaar', field: 'backImage', label: 'Aadhaar Back Image' },
@@ -365,7 +379,7 @@ const PublicDocumentUpload = () => {
 
   // ================= NAVIGATION =================
   const nextStep = () => {
-    if (currentStep < 6) {
+    if (currentStep < 7) {
       setCurrentStep(currentStep + 1);
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
@@ -393,15 +407,19 @@ const PublicDocumentUpload = () => {
   };
 
   // ================= FILE PREVIEW COMPONENT =================
-  const FilePreview = ({ url, onRemove, onView, isDisabled }) => {
+  const FilePreview = ({ url, onRemove, onView, isDisabled, isLogo = false }) => {
     if (!url) return null;
     
     const fileName = url.split('/').pop();
     const fileSize = Math.round(Math.random() * 500 + 100);
     
     return (
-      <div className="file-preview">
-        <FaFile className="text-primary" size={24} />
+      <div className={`file-preview ${isLogo ? 'logo-preview' : ''}`}>
+        {isLogo ? (
+          <img src={`${API_BASE}${url}`} alt="Company Logo" className="logo-thumbnail" />
+        ) : (
+          <FaFile className="text-primary" size={24} />
+        )}
         <div className="file-info">
           <div className="file-name">{fileName}</div>
           <div className="file-size">{fileSize} KB</div>
@@ -432,11 +450,12 @@ const PublicDocumentUpload = () => {
   const renderStepIndicator = () => {
     const steps = [
       { number: 1, label: "Personal" },
-      { number: 2, label: "Aadhaar" },
-      { number: 3, label: "PAN & GST" },
-      { number: 4, label: "Bank" },
-      { number: 5, label: "Contact" },
-      { number: 6, label: "Business" },
+      { number: 2, label: "Brand Info" }, // ✅ Brand Info with Logo + Description
+      { number: 3, label: "Aadhaar" },
+      { number: 4, label: "PAN & GST" },
+      { number: 5, label: "Bank" },
+      { number: 6, label: "Contact" },
+      { number: 7, label: "Business" },
     ];
 
     return (
@@ -461,14 +480,14 @@ const PublicDocumentUpload = () => {
         </div>
         <div className="progress-container">
           <ProgressBar
-            now={(currentStep / 6) * 100}
+            now={(currentStep / 7) * 100}
             className="mt-3"
             variant="primary"
             style={{ height: "6px", borderRadius: "3px" }}
           />
           <div className="text-center mt-2">
             <small className="text-muted">
-              Step {currentStep} of 6 • {progress}% Complete
+              Step {currentStep} of 7 • {progress}% Complete
             </small>
           </div>
         </div>
@@ -543,8 +562,97 @@ const PublicDocumentUpload = () => {
     </div>
   );
 
-  // ================= STEP 2: AADHAAR DETAILS =================
+  // ================= STEP 2: BRAND INFORMATION (Logo + Description - REQUIRED) =================
   const renderStep2 = () => (
+    <div className="step-content">
+      <h5 className="step-title">
+        <FaStore className="me-2 text-primary" /> Brand Information
+      </h5>
+      <Alert variant="info" className="mb-4">
+        <small>
+          <strong>📝 Important:</strong> Brand description is required. Logo is optional but recommended.
+        </small>
+      </Alert>
+
+      <Row>
+        {/* Brand Description - REQUIRED */}
+        <Col md={12}>
+          <Form.Group className="mb-4">
+            <Form.Label>
+              <FaInfoCircle className="me-2" /> Brand Description <span className="required">*</span>
+            </Form.Label>
+            <Form.Control
+              as="textarea"
+              rows={4}
+              placeholder="Tell us about your brand, what products you offer, your mission, and what makes you unique..."
+              value={formData.brand.description}
+              onChange={(e) => handleFieldChange('brand', 'description', e.target.value)}
+              disabled={documentStatus === 'verified' || documentStatus === 'submitted'}
+              className="brand-description-textarea"
+              isInvalid={!formData.brand.description && formData.brand.description !== ''}
+            />
+            <Form.Text className="text-muted">
+              Minimum 20 characters. Maximum 500 characters.
+            </Form.Text>
+            <div className="text-end text-muted small mt-1">
+              {formData.brand.description.length}/500 characters
+              {formData.brand.description.length > 0 && formData.brand.description.length < 20 && (
+                <span className="text-warning ms-2">(Min 20 characters)</span>
+              )}
+              {formData.brand.description.length >= 20 && (
+                <span className="text-success ms-2">✓</span>
+              )}
+            </div>
+            {formData.brand.description && formData.brand.description.length < 20 && (
+              <Form.Text className="text-warning">
+                Please enter at least 20 characters.
+              </Form.Text>
+            )}
+          </Form.Group>
+        </Col>
+
+        {/* Logo Upload - OPTIONAL */}
+        <Col md={12}>
+          <Form.Group className="mb-3">
+            <Form.Label>
+              <FaImage className="me-2" /> Company Logo <span className="text-muted">(Optional)</span>
+            </Form.Label>
+            <div className="file-input-wrapper">
+              <Form.Control
+                type="file"
+                accept="image/*"
+                onChange={(e) => handleFileUpload('logo', 'image', e.target.files[0])}
+                disabled={documentStatus === 'verified' || documentStatus === 'submitted'}
+              />
+            </div>
+            <Form.Text className="text-muted">
+              Upload a square image (recommended: 500x500px). JPG, PNG, WEBP formats accepted.
+              Max 5MB.
+            </Form.Text>
+            <FilePreview
+              url={formData.logo.image}
+              onView={() => window.open(`${API_BASE}${formData.logo.image}`, '_blank')}
+              onRemove={() => handleRemoveFile('logo', 'image')}
+              isDisabled={documentStatus === 'verified' || documentStatus === 'submitted'}
+              isLogo={true}
+            />
+          </Form.Group>
+        </Col>
+      </Row>
+
+      <div className="d-flex justify-content-between mt-3">
+        <Button variant="secondary" onClick={prevStep}>
+          <FaArrowLeft className="me-2" /> Previous
+        </Button>
+        <Button variant="primary" onClick={nextStep}>
+          Next Step <FaArrowRight className="ms-2" />
+        </Button>
+      </div>
+    </div>
+  );
+
+  // ================= STEP 3: AADHAAR DETAILS =================
+  const renderStep3 = () => (
     <div className="step-content">
       <h5 className="step-title">
         <FaIdCard className="me-2 text-primary" /> Aadhaar Details
@@ -621,8 +729,8 @@ const PublicDocumentUpload = () => {
     </div>
   );
 
-  // ================= STEP 3: PAN & GST DETAILS =================
-  const renderStep3 = () => (
+  // ================= STEP 4: PAN & GST DETAILS =================
+  const renderStep4 = () => (
     <div className="step-content">
       <h5 className="step-title">
         <FaFileInvoice className="me-2 text-primary" /> PAN & GST Details
@@ -715,8 +823,8 @@ const PublicDocumentUpload = () => {
     </div>
   );
 
-  // ================= STEP 4: BANK DETAILS =================
-  const renderStep4 = () => (
+  // ================= STEP 5: BANK DETAILS =================
+  const renderStep5 = () => (
     <div className="step-content">
       <h5 className="step-title">
         <FaUniversity className="me-2 text-primary" /> Bank Account Details
@@ -812,8 +920,8 @@ const PublicDocumentUpload = () => {
     </div>
   );
 
-  // ================= STEP 5: CONTACT INFORMATION =================
-  const renderStep5 = () => (
+  // ================= STEP 6: CONTACT INFORMATION =================
+  const renderStep6 = () => (
     <div className="step-content">
       <h5 className="step-title">
         <FaPhone className="me-2 text-primary" /> Contact Information
@@ -884,8 +992,7 @@ const PublicDocumentUpload = () => {
         <Col md={6}>
           <Form.Group className="mb-3">
             <Form.Label>Pincode</Form.Label>
-            <Form.Control
-              type="text"
+            <Form.Control              type="text"
               placeholder="Enter pincode"
               value={formData.contact.pincode}
               onChange={(e) => handleFieldChange('contact', 'pincode', e.target.value)}
@@ -917,8 +1024,8 @@ const PublicDocumentUpload = () => {
     </div>
   );
 
-  // ================= STEP 6: BUSINESS INFORMATION =================
-  const renderStep6 = () => (
+  // ================= STEP 7: BUSINESS INFORMATION =================
+  const renderStep7 = () => (
     <div className="step-content">
       <h5 className="step-title">
         <FaBriefcase className="me-2 text-primary" /> Business Information
@@ -1129,6 +1236,7 @@ const PublicDocumentUpload = () => {
           {currentStep === 4 && renderStep4()}
           {currentStep === 5 && renderStep5()}
           {currentStep === 6 && renderStep6()}
+          {currentStep === 7 && renderStep7()}
         </div>
 
         {/* Help Text */}

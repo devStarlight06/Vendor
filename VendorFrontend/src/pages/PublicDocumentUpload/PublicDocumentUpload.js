@@ -45,16 +45,55 @@ import {
 import axios from "axios";
 import "./publicDocumentUpload.css";
 
-// const API_URL = "http://localhost:5177/api/seller";
-// const API_BASE = "http://localhost:5177";
-
+// ================= API CONFIGURATION WITH CORS FIX =================
 const API_URL = "https://api-vendor.native91.com/api/seller";
 const API_BASE = "https://api-vendor.native91.com";
+
+// Create axios instance with CORS support
+const axiosInstance = axios.create({
+  baseURL: API_URL,
+  timeout: 60000,
+  headers: {
+    "Content-Type": "application/json",
+    "Accept": "application/json",
+  },
+  withCredentials: true,
+});
+
+// Add request interceptor for debugging
+axiosInstance.interceptors.request.use(
+  (config) => {
+    console.log(`📤 ${config.method.toUpperCase()} ${config.url}`);
+    return config;
+  },
+  (error) => {
+    console.error("Request Error:", error);
+    return Promise.reject(error);
+  }
+);
+
+// Add response interceptor for error handling
+axiosInstance.interceptors.response.use(
+  (response) => {
+    console.log(`📥 ${response.status} ${response.config.url}`);
+    return response;
+  },
+  (error) => {
+    if (error.response) {
+      console.error("Response Error:", error.response.status, error.response.data);
+    } else if (error.request) {
+      console.error("Network Error - No Response:", error.request);
+    } else {
+      console.error("Request Setup Error:", error.message);
+    }
+    return Promise.reject(error);
+  }
+);
 
 const PublicDocumentUpload = () => {
   const { trackingId } = useParams();
   const navigate = useNavigate();
-  
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -115,7 +154,7 @@ const PublicDocumentUpload = () => {
 
       try {
         setLoading(true);
-        const res = await axios.get(`${API_URL}/documents/${trackingId}`);
+        const res = await axiosInstance.get(`/documents/${trackingId}`);
 
         if (res.data.success && res.data.document) {
           const doc = res.data.document;
@@ -124,7 +163,7 @@ const PublicDocumentUpload = () => {
           setFullName(doc.fullName || doc.company || "Seller");
           setDocumentStatus(doc.status || "draft");
           setLastSaved(doc.lastSaved);
-          
+
           setFormData({
             // ✅ Load logo and brand description
             logo: doc.logo || { image: "" },
@@ -174,7 +213,7 @@ const PublicDocumentUpload = () => {
   useEffect(() => {
     let filled = 0;
     let total = 0;
-    
+
     const fields = [
       formData.brand.description, // ✅ Brand description added to progress
       formData.aadhaar.number,
@@ -190,12 +229,12 @@ const PublicDocumentUpload = () => {
       formData.contact.address,
       formData.business.registrationType,
     ];
-    
+
     total = fields.length;
     fields.forEach(field => {
       if (field && field.trim() !== "") filled++;
     });
-    
+
     setProgress(Math.round((filled / total) * 100));
   }, [formData]);
 
@@ -205,8 +244,8 @@ const PublicDocumentUpload = () => {
 
     try {
       setSaving(true);
-      const res = await axios.post(
-        `${API_URL}/documents/save`,
+      const res = await axiosInstance.post(
+        `/documents/save`,
         { trackingId, ...formData },
         {
           headers: { "Content-Type": "application/json" },
@@ -221,6 +260,7 @@ const PublicDocumentUpload = () => {
       }
     } catch (err) {
       console.error("Auto-save error:", err);
+      // Don't show error to user for auto-save failures
     } finally {
       setSaving(false);
     }
@@ -245,7 +285,7 @@ const PublicDocumentUpload = () => {
     }, 2000);
   };
 
-  // ================= FILE UPLOAD =================
+  // ================= FILE UPLOAD WITH CORS FIX =================
   const handleFileUpload = async (section, field, file) => {
     if (!file) return;
 
@@ -269,11 +309,13 @@ const PublicDocumentUpload = () => {
     formData.append("field", `${section}.${field}`);
 
     try {
-      const res = await axios.post(
-        `${API_URL}/documents/upload`,
+      const res = await axiosInstance.post(
+        `/documents/upload`,
         formData,
         {
-          headers: { "Content-Type": "multipart/form-data" },
+          headers: { 
+            "Content-Type": "multipart/form-data",
+          },
           onUploadProgress: (progressEvent) => {
             const progress = Math.round(
               (progressEvent.loaded * 100) / progressEvent.total
@@ -296,7 +338,17 @@ const PublicDocumentUpload = () => {
       }
     } catch (err) {
       console.error("Upload error:", err);
-      setError(err.response?.data?.message || "Failed to upload file");
+      
+      // Enhanced error message for CORS issues
+      let errorMessage = "Failed to upload file. ";
+      if (err.message === "Network Error") {
+        errorMessage += "Please check your internet connection and try again.";
+      } else if (err.response?.data?.message) {
+        errorMessage += err.response.data.message;
+      } else {
+        errorMessage += "Please try again or contact support.";
+      }
+      setError(errorMessage);
     } finally {
       setUploading(false);
       setUploadProgress(0);
@@ -316,10 +368,10 @@ const PublicDocumentUpload = () => {
     setTimeout(() => setSuccess(""), 3000);
   };
 
-  // ================= SUBMIT DOCUMENTS =================
+  // ================= SUBMIT DOCUMENTS WITH NAVIGATION =================
   const handleSubmit = async () => {
     const required = [
-      { section: 'brand', field: 'description', label: 'Brand Description' }, // ✅ Added brand description to required
+      { section: 'brand', field: 'description', label: 'Brand Description' },
       { section: 'aadhaar', field: 'number', label: 'Aadhaar Number' },
       { section: 'aadhaar', field: 'frontImage', label: 'Aadhaar Front Image' },
       { section: 'aadhaar', field: 'backImage', label: 'Aadhaar Back Image' },
@@ -356,10 +408,11 @@ const PublicDocumentUpload = () => {
     }
 
     setSubmitting(true);
+    setError("");
 
     try {
-      const res = await axios.post(
-        `${API_URL}/documents/submit`,
+      const res = await axiosInstance.post(
+        `/documents/submit`,
         { trackingId },
         { headers: { "Content-Type": "application/json" } }
       );
@@ -367,11 +420,24 @@ const PublicDocumentUpload = () => {
       if (res.data.success) {
         setDocumentStatus('submitted');
         setSuccess("✅ Documents submitted successfully for verification!");
-        setTimeout(() => setSuccess(""), 5000);
+        
+        // Navigate to success page after 2 seconds
+        setTimeout(() => {
+          navigate('/document-submitted');
+        }, 2000);
       }
     } catch (err) {
       console.error("Submit error:", err);
-      setError(err.response?.data?.message || "Failed to submit documents");
+      
+      let errorMessage = "Failed to submit documents. ";
+      if (err.response?.data?.message) {
+        errorMessage += err.response.data.message;
+      } else if (err.message === "Network Error") {
+        errorMessage += "Network error. Please check your connection.";
+      } else {
+        errorMessage += "Please try again.";
+      }
+      setError(errorMessage);
     } finally {
       setSubmitting(false);
     }
@@ -409,10 +475,10 @@ const PublicDocumentUpload = () => {
   // ================= FILE PREVIEW COMPONENT =================
   const FilePreview = ({ url, onRemove, onView, isDisabled, isLogo = false }) => {
     if (!url) return null;
-    
+
     const fileName = url.split('/').pop();
     const fileSize = Math.round(Math.random() * 500 + 100);
-    
+
     return (
       <div className={`file-preview ${isLogo ? 'logo-preview' : ''}`}>
         {isLogo ? (
@@ -425,16 +491,16 @@ const PublicDocumentUpload = () => {
           <div className="file-size">{fileSize} KB</div>
         </div>
         <div className="file-actions">
-          <button 
-            className="btn-icon view" 
+          <button
+            className="btn-icon view"
             onClick={onView}
             title="View file"
           >
             <FaEye />
           </button>
           {!isDisabled && (
-            <button 
-              className="btn-icon remove" 
+            <button
+              className="btn-icon remove"
               onClick={onRemove}
               title="Remove file"
             >
@@ -450,7 +516,7 @@ const PublicDocumentUpload = () => {
   const renderStepIndicator = () => {
     const steps = [
       { number: 1, label: "Personal" },
-      { number: 2, label: "Brand Info" }, // ✅ Brand Info with Logo + Description
+      { number: 2, label: "Brand Info" },
       { number: 3, label: "Aadhaar" },
       { number: 4, label: "PAN & GST" },
       { number: 5, label: "Bank" },
@@ -502,7 +568,7 @@ const PublicDocumentUpload = () => {
         <FaUserCircle className="me-2 text-primary" /> Personal Information
       </h5>
       <p className="text-muted mb-4">Please confirm your personal details</p>
-      
+
       <Row>
         <Col md={6}>
           <Form.Group className="mb-3">
@@ -562,7 +628,7 @@ const PublicDocumentUpload = () => {
     </div>
   );
 
-  // ================= STEP 2: BRAND INFORMATION (Logo + Description - REQUIRED) =================
+  // ================= STEP 2: BRAND INFORMATION =================
   const renderStep2 = () => (
     <div className="step-content">
       <h5 className="step-title">
@@ -575,7 +641,6 @@ const PublicDocumentUpload = () => {
       </Alert>
 
       <Row>
-        {/* Brand Description - REQUIRED */}
         <Col md={12}>
           <Form.Group className="mb-4">
             <Form.Label>
@@ -611,7 +676,6 @@ const PublicDocumentUpload = () => {
           </Form.Group>
         </Col>
 
-        {/* Logo Upload - OPTIONAL */}
         <Col md={12}>
           <Form.Group className="mb-3">
             <Form.Label>
@@ -992,7 +1056,8 @@ const PublicDocumentUpload = () => {
         <Col md={6}>
           <Form.Group className="mb-3">
             <Form.Label>Pincode</Form.Label>
-            <Form.Control              type="text"
+            <Form.Control
+              type="text"
               placeholder="Enter pincode"
               value={formData.contact.pincode}
               onChange={(e) => handleFieldChange('contact', 'pincode', e.target.value)}
@@ -1102,9 +1167,9 @@ const PublicDocumentUpload = () => {
           <Button variant="secondary" onClick={autoSave} disabled={saving || documentStatus === 'verified' || documentStatus === 'submitted'}>
             <FaSave className="me-2" /> {saving ? "Saving..." : "Save Draft"}
           </Button>
-          <Button 
-            variant="success" 
-            onClick={handleSubmit} 
+          <Button
+            variant="success"
+            onClick={handleSubmit}
             disabled={submitting || documentStatus === 'verified' || documentStatus === 'submitted'}
           >
             {submitting ? (
@@ -1212,8 +1277,8 @@ const PublicDocumentUpload = () => {
         {uploading && (
           <div className="upload-progress">
             <div className="progress">
-              <div 
-                className="progress-bar" 
+              <div
+                className="progress-bar"
                 style={{ width: `${uploadProgress}%` }}
                 role="progressbar"
                 aria-valuenow={uploadProgress}

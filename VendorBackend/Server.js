@@ -19,7 +19,8 @@ app.use(cors({
     "https://native91.com",
     "https://admin.native91.com",
     "http://localhost:3000",
-    "http://localhost:3001"
+    "http://localhost:3001",
+"https://api-vendor.native91.com"
   ],
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],

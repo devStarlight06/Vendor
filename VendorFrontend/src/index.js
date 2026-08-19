@@ -24,7 +24,7 @@ import Coupon from './pages/Coupon/Coupon';
 import Notification from './pages/Notification/Notification';
 import Review from './pages/Review/Review';
 import Settings from './pages/Settings/Settings';
-
+import DocumentSubmitted from "./pages/PublicDocumentUpload/DocumentSubmitted";
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <Router basename="/">
@@ -50,7 +50,10 @@ root.render(
       {/* ✅ Public Document Upload Route - NO AUTH REQUIRED */}
       {/* URL format: /document-upload/DOC-ABC123DEF456 */}
       <Route path="/document-upload/:trackingId" element={<PublicDocumentUpload />} />
-      
+      <Route
+  path="/document-submitted"
+  element={<DocumentSubmitted />}
+/>
       {/* Payment (Commented) */}
       {/* <Route path="/payment" element={<Payment />} /> */}
     </Routes>

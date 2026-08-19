@@ -1,4 +1,5 @@
-// routes/product.routes.js - COMPLETE WITH IMAGE UPLOADER
+// routes/product.routes.js - UPDATED WITH FREE MONTHS
+
 const express = require("express");
 const router = express.Router();
 const multer = require("multer");
@@ -8,6 +9,15 @@ const XLSX = require("xlsx");
 const Product = require("../models/Product");
 const Vendor = require("../models/Vendor");
 const auth = require("../middleware/auth");
+
+// ✅ Import commission utils
+const {
+  getEffectiveCommissionRate,
+  getVendorPlanDetails,
+  isCurrentMonthFree,
+  getFreeMonthDescription,
+  PLAN_DETAILS
+} = require("../middleware/commissionUtils");
 
 // ============================================================
 // MULTER SETUP FOR PRODUCT IMAGES
@@ -30,7 +40,6 @@ const storage = multer.diskStorage({
   },
 });
 
-// File filter for images only
 const fileFilter = (req, file, cb) => {
   const allowedTypes = /jpeg|jpg|png|gif|webp|svg/;
   const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
@@ -44,10 +53,13 @@ const fileFilter = (req, file, cb) => {
 
 const upload = multer({ 
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter,
 });
 
+// ============================================================
+// CHECK VENDOR STATUS MIDDLEWARE
+// ============================================================
 const checkVendorStatus = async (req, res, next) => {
   const vendor = await Vendor.findById(req.user.id);
   if (!vendor) return res.status(404).json({ message: "Vendor not found" });
@@ -65,31 +77,7 @@ const checkVendorStatus = async (req, res, next) => {
 };
 
 // ============================================================
-// HELPER: Get commission rate from vendor plan
-// ============================================================
-const getCommissionRate = async (vendorId) => {
-  const vendor = await Vendor.findById(vendorId);
-  if (!vendor) return 5;
-
-  const COMMISSION_MAP = {
-    'founding': 0,
-    'growth': 8,
-    'premium': 3
-  };
-
-  if (vendor.plan === 'founding') {
-    const now = new Date();
-    const threeMonthsLater = new Date(vendor.planUpdatedAt || vendor.createdAt);
-    threeMonthsLater.setMonth(threeMonthsLater.getMonth() + 3);
-    const isOfferActive = now <= threeMonthsLater || (vendor.totalOrders || 0) < 10;
-    return isOfferActive ? 0 : 10;
-  }
-
-  return COMMISSION_MAP[vendor.plan] || 5;
-};
-
-// ============================================================
-// GET VENDOR PLAN & COMMISSION INFO
+// GET VENDOR PLAN & COMMISSION INFO (UPDATED WITH FREE MONTHS)
 // ============================================================
 router.get("/my-plan", auth, async (req, res) => {
   try {
@@ -98,54 +86,13 @@ router.get("/my-plan", auth, async (req, res) => {
       return res.status(404).json({ message: "Vendor not found" });
     }
 
-    const commissionRate = await getCommissionRate(vendor._id);
-    const PLAN_DETAILS = {
-      'founding': {
-        name: 'Founding 100',
-        monthlyFee: 0,
-        commissionRate: commissionRate,
-        isOfferActive: commissionRate === 0,
-        features: [
-          'Seller storefront & order management',
-          'Up to 50 product listings',
-          '1 Homepage Feature/month',
-          '2 Category Features/month',
-          '1 Social Media Feature/month',
-          'Seller Dashboard & Analytics',
-          'Access to Seasonal Campaigns'
-        ]
-      },
-      'growth': {
-        name: 'Growth Seller',
-        monthlyFee: 999,
-        commissionRate: 8,
-        isOfferActive: false,
-        features: [
-          'Up to 50 product listings',
-          '2 Homepage Features/month',
-          '4 Category Features/month',
-          '2 Social Media Features/month',
-          'Seller Dashboard & Analytics',
-          'Order Management',
-          'Access to Seasonal Campaigns'
-        ]
-      },
-      'premium': {
-        name: 'Premium Brand',
-        monthlyFee: 2999,
-        commissionRate: 3,
-        isOfferActive: false,
-        features: [
-          'Unlimited Listings',
-          '4 Homepage Features/month',
-          '8 Category Features/month',
-          '4 Social Media Features/month',
-          'Newsletter Inclusion',
-          'Advanced Analytics',
-          'Priority Support'
-        ]
-      }
-    };
+    const planDetails = getVendorPlanDetails(vendor);
+    const isFree = isCurrentMonthFree();
+    const freeDescription = getFreeMonthDescription();
+    const freeMonths = [
+      { month: 'September 2026', isFree: true },
+      { month: 'November 2026', isFree: true }
+    ];
 
     res.json({
       success: true,
@@ -155,9 +102,11 @@ router.get("/my-plan", auth, async (req, res) => {
         company: vendor.company,
         plan: vendor.plan,
         status: vendor.status,
-        planDetails: PLAN_DETAILS[vendor.plan] || PLAN_DETAILS['founding'],
-        commissionRate: commissionRate,
-        isOfferActive: commissionRate === 0
+        planDetails: planDetails,
+        effectiveCommission: planDetails.effectiveCommission,
+        isFreeMonth: isFree,
+        freeMonthDescription: freeDescription,
+        freeMonths: freeMonths
       }
     });
   } catch (err) {
@@ -167,67 +116,7 @@ router.get("/my-plan", auth, async (req, res) => {
 });
 
 // ============================================================
-// USER SIDE – GET ALL PRODUCTS (WITH IMAGES)
-// ============================================================
-router.get("/", async (req, res) => {
-  try {
-    const products = await Product.find();
-    res.json(products);
-  } catch (err) {
-    console.error("Error fetching all products:", err);
-    res.status(500).json({ message: err.message });
-  }
-});
-
-// ============================================================
-// GET ALL CATEGORIES FOR DROPDOWN
-// ============================================================
-router.get("/all-categories", auth, async (req, res) => {
-  try {
-    const categories = await Product.distinct("category");
-
-    const categoryObjects = categories.map((cat) => ({
-      _id: cat,
-      name: cat,
-    }));
-
-    res.json({
-      success: true,
-      categories: categoryObjects,
-    });
-
-  } catch (err) {
-    console.error("Error fetching all categories:", err);
-    res.status(500).json({
-      success: false,
-      message: err.message,
-    });
-  }
-});
-
-// ============================================================
-// VENDOR – GET HIS CATEGORIES
-// ============================================================
-router.get("/my-categories", auth, async (req, res) => {
-  try {
-    if (!req.user || !req.user.company) {
-      return res.status(400).json({ message: "User company not found" });
-    }
-    
-    const categories = await Product.distinct("category", {
-      company: req.user.company,
-    });
-    
-    const categoryArray = Array.isArray(categories) ? categories : [];
-    res.json(categoryArray);
-  } catch (err) {
-    console.error("Error fetching categories:", err);
-    res.status(500).json([]);
-  }
-});
-
-// ============================================================
-// VENDOR – GET HIS PRODUCTS WITH COMMISSION INFO
+// GET PRODUCTS WITH COMMISSION (UPDATED)
 // ============================================================
 router.get("/my-products", auth, async (req, res) => {
   try {
@@ -239,12 +128,16 @@ router.get("/my-products", auth, async (req, res) => {
       company: req.user.company,
     });
     
-    const commissionRate = await getCommissionRate(req.user.id);
+    const vendor = await Vendor.findById(req.user.id);
+    const effectiveCommission = getEffectiveCommissionRate(vendor);
+    const isFree = isCurrentMonthFree();
     
     res.json({
       products,
-      commissionRate,
-      plan: req.user.plan || 'founding'
+      commissionRate: effectiveCommission,
+      plan: vendor.plan || 'STARTER',
+      isFreeMonth: isFree,
+      freeMonthDescription: getFreeMonthDescription()
     });
   } catch (err) {
     console.error("Error fetching my products:", err);
@@ -253,83 +146,70 @@ router.get("/my-products", auth, async (req, res) => {
 });
 
 // ============================================================
-// VENDOR – DOWNLOAD EXCEL TEMPLATE WITH SIZE/WEIGHT
+// ADD PRODUCT (UPDATED WITH FREE MONTHS)
 // ============================================================
-router.get("/download-template", auth, (req, res) => {
+router.post("/", auth, upload.array("images", 10), async (req, res) => {
   try {
-    const templateData = [
-      {
-        "Name": "Sample Product 1",
-        "Description": "This is a sample product description",
-        "Price": 99.99,
-        "Category": "Electronics",
-        "Stock": 10,
-        "Size": "M",
-        "Weight": 250,
-        "WeightUnit": "g",
-        "SKU": "PRD-001",
-        "Variant": "Red",
-        "Length": 10,
-        "Width": 5,
-        "Height": 2,
-        "DimensionUnit": "cm",
-        "Images": "/uploads/sample-image1.jpg, /uploads/sample-image2.jpg"
-      },
-      {
-        "Name": "Sample Product 2",
-        "Description": "Another sample product",
-        "Price": 49.99,
-        "Category": "Clothing",
-        "Stock": 5,
-        "Size": "L",
-        "Weight": 0,
-        "WeightUnit": "",
-        "SKU": "PRD-002",
-        "Variant": "Blue",
-        "Length": 0,
-        "Width": 0,
-        "Height": 0,
-        "DimensionUnit": "cm",
-        "Images": "/uploads/sample-image1.jpg"
-      }
-    ];
+    const imagePaths = req.files?.map(
+      (file) => `/uploads/${file.filename}`
+    ) || [];
 
-    const worksheet = XLSX.utils.json_to_sheet(templateData);
+    const vendor = await Vendor.findById(req.user.id);
+    if (!vendor) {
+      return res.status(404).json({
+        success: false,
+        message: "Vendor not found"
+      });
+    }
+
+    const effectiveCommission = getEffectiveCommissionRate(vendor);
+    const isFree = isCurrentMonthFree();
+
+    const dimensions = {
+      length: parseFloat(req.body['dimensions[length]']) || 0,
+      width: parseFloat(req.body['dimensions[width]']) || 0,
+      height: parseFloat(req.body['dimensions[height]']) || 0,
+      unit: req.body['dimensions[unit]'] || 'cm'
+    };
+
+    const product = new Product({
+      name: req.body.name,
+      description: req.body.description || "",
+      price: req.body.price,
+      category: req.body.category,
+      image: imagePaths,
+      company: vendor.company,
+      vendorId: req.user.id,
+      commission_rate: effectiveCommission,
+      stock: parseInt(req.body.stock) || 0,
+      isActive: true,
+      size: req.body.size || "",
+      weight: parseFloat(req.body.weight) || 0,
+      weightUnit: req.body.weightUnit || "",
+      sku: req.body.sku || "",
+      variant: req.body.variant || "",
+      dimensions: dimensions
+    });
+
+    await product.save();
     
-    worksheet['!cols'] = [
-      { wch: 20 }, // Name
-      { wch: 40 }, // Description
-      { wch: 12 }, // Price
-      { wch: 15 }, // Category
-      { wch: 10 }, // Stock
-      { wch: 10 }, // Size
-      { wch: 10 }, // Weight
-      { wch: 12 }, // WeightUnit
-      { wch: 15 }, // SKU
-      { wch: 15 }, // Variant
-      { wch: 10 }, // Length
-      { wch: 10 }, // Width
-      { wch: 10 }, // Height
-      { wch: 12 }, // DimensionUnit
-      { wch: 50 }  // Images
-    ];
-    
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Products");
-    
-    const excelBuffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
-    
-    res.setHeader("Content-Disposition", "attachment; filename=product_template.xlsx");
-    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-    res.send(excelBuffer);
+    res.status(201).json({
+      product,
+      commissionRate: effectiveCommission,
+      isFreeMonth: isFree,
+      freeMonthDescription: isFree ? getFreeMonthDescription() : null,
+      message: isFree ? 
+        `Product added with 0% commission (${getFreeMonthDescription()})` :
+        `Product added with ${effectiveCommission}% commission`
+    });
   } catch (err) {
-    console.error("Error downloading template:", err);
-    res.status(500).json({ message: err.message });
+    console.error("Error adding product:", err);
+    res.status(400).json({ message: err.message });
   }
 });
 
 // ============================================================
-// VENDOR – BULK UPLOAD PRODUCTS FROM EXCEL WITH IMAGE FILES
+// BULK UPLOAD PRODUCTS (UPDATED WITH FREE MONTHS)
 // ============================================================
 router.post(
   "/bulk-upload",
@@ -361,7 +241,8 @@ router.post(
         return res.status(404).json({ message: "Vendor not found" });
       }
 
-      const commissionRate = await getCommissionRate(req.user.id);
+      const effectiveCommission = getEffectiveCommissionRate(vendor);
+      const isFree = isCurrentMonthFree();
 
       const uploadedImages = req.files.images || [];
       const imagePaths = uploadedImages.map(
@@ -411,7 +292,7 @@ router.post(
           image: imagesArray.length > 0 ? imagesArray : [],
           company: vendor.company,
           vendorId: req.user.id,
-          commission_rate: commissionRate,
+          commission_rate: effectiveCommission,
           stock: stock,
           isActive: true,
           size: row.Size || row.size || "",
@@ -457,13 +338,14 @@ router.post(
       res.status(201).json({
         message: `${insertedProducts.length} products uploaded successfully`,
         products: insertedProducts,
-        commissionRate: commissionRate,
+        commissionRate: effectiveCommission,
+        isFreeMonth: isFree,
+        freeMonthDescription: isFree ? getFreeMonthDescription() : null,
         errors: errors.length > 0 ? errors : undefined,
         totalRows: data.length,
         successfulRows: insertedProducts.length,
         failedRows: errors.length,
-        imagesUploaded: imagePaths.length,
-        imagesAssigned: products.filter(p => p.image && p.image.length > 0).length
+        imagesUploaded: imagePaths.length
       });
 
     } catch (err) {
@@ -484,6 +366,83 @@ router.post(
 );
 
 // ============================================================
+// GET CURRENT COMMISSION INFO (FOR FRONTEND)
+// ============================================================
+router.get("/commission-info", auth, async (req, res) => {
+  try {
+    const vendor = await Vendor.findById(req.user.id);
+    if (!vendor) {
+      return res.status(404).json({ message: "Vendor not found" });
+    }
+
+    const effectiveCommission = getEffectiveCommissionRate(vendor);
+    const isFree = isCurrentMonthFree();
+    const freeDescription = getFreeMonthDescription();
+    const planDetails = getVendorPlanDetails(vendor);
+
+    res.json({
+      success: true,
+      commissionRate: effectiveCommission,
+      isFreeMonth: isFree,
+      freeMonthDescription: freeDescription,
+      plan: vendor.plan,
+      planDetails: planDetails,
+      freeMonths: [
+        { month: 'September 2026', isFree: true },
+        { month: 'November 2026', isFree: true }
+      ]
+    });
+  } catch (err) {
+    console.error("Commission info error:", err);
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ============================================================
+// GET ALL CATEGORIES
+// ============================================================
+router.get("/all-categories", auth, async (req, res) => {
+  try {
+    const categories = await Product.distinct("category");
+    const categoryObjects = categories.map((cat) => ({
+      _id: cat,
+      name: cat,
+    }));
+    res.json({
+      success: true,
+      categories: categoryObjects,
+    });
+  } catch (err) {
+    console.error("Error fetching all categories:", err);
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
+});
+
+// ============================================================
+// VENDOR – GET HIS CATEGORIES
+// ============================================================
+router.get("/my-categories", auth, async (req, res) => {
+  try {
+    if (!req.user || !req.user.company) {
+      return res.status(400).json({ message: "User company not found" });
+    }
+    
+    const categories = await Product.distinct("category", {
+      company: req.user.company,
+    });
+    
+    const categoryArray = Array.isArray(categories) ? categories : [];
+    res.json(categoryArray);
+  } catch (err) {
+    console.error("Error fetching categories:", err);
+    res.status(500).json([]);
+  }
+});
+
+// ============================================================
 // GET SINGLE PRODUCT
 // ============================================================
 router.get("/:id", async (req, res) => {
@@ -500,65 +459,7 @@ router.get("/:id", async (req, res) => {
 });
 
 // ============================================================
-// VENDOR – ADD PRODUCT WITH AUTO-COMMISSION AND SIZE/WEIGHT
-// ============================================================
-router.post("/", auth, upload.array("images", 10), async (req, res) => {
-  try {
-    const imagePaths = req.files?.map(
-      (file) => `/uploads/${file.filename}`
-    ) || [];
-
-    const vendor = await Vendor.findById(req.user.id);
-    if (!vendor) {
-      return res.status(404).json({
-        success: false,
-        message: "Vendor not found"
-      });
-    }
-
-    const commissionRate = await getCommissionRate(req.user.id);
-
-    const dimensions = {
-      length: parseFloat(req.body['dimensions[length]']) || 0,
-      width: parseFloat(req.body['dimensions[width]']) || 0,
-      height: parseFloat(req.body['dimensions[height]']) || 0,
-      unit: req.body['dimensions[unit]'] || 'cm'
-    };
-
-    const product = new Product({
-      name: req.body.name,
-      description: req.body.description || "",
-      price: req.body.price,
-      category: req.body.category,
-      image: imagePaths,
-      company: vendor.company,
-      vendorId: req.user.id,
-      commission_rate: commissionRate,
-      stock: parseInt(req.body.stock) || 0,
-      isActive: true,
-      size: req.body.size || "",
-      weight: parseFloat(req.body.weight) || 0,
-      weightUnit: req.body.weightUnit || "",
-      sku: req.body.sku || "",
-      variant: req.body.variant || "",
-      dimensions: dimensions
-    });
-
-    await product.save();
-    
-    res.status(201).json({
-      product,
-      commissionRate,
-      message: `Product added with ${commissionRate}% commission`
-    });
-  } catch (err) {
-    console.error("Error adding product:", err);
-    res.status(400).json({ message: err.message });
-  }
-});
-
-// ============================================================
-// VENDOR – UPDATE PRODUCT WITH SIZE/WEIGHT
+// UPDATE PRODUCT (UPDATED)
 // ============================================================
 router.put("/:id", auth, upload.array("images", 10), async (req, res) => {
   try {
@@ -612,11 +513,13 @@ router.put("/:id", auth, upload.array("images", 10), async (req, res) => {
       return res.status(404).json({ message: "Product not found" });
     }
 
-    const commissionRate = await getCommissionRate(req.user.id);
+    const effectiveCommission = getEffectiveCommissionRate(vendor);
+    const isFree = isCurrentMonthFree();
 
     res.json({
       product: updated,
-      commissionRate,
+      commissionRate: effectiveCommission,
+      isFreeMonth: isFree,
       message: "Product updated successfully"
     });
   } catch (err) {
@@ -626,7 +529,28 @@ router.put("/:id", auth, upload.array("images", 10), async (req, res) => {
 });
 
 // ============================================================
-// UPDATE PRODUCT STOCK (VENDOR)
+// DELETE PRODUCT
+// ============================================================
+router.delete("/:id", auth, async (req, res) => {
+  try {
+    const deleted = await Product.findOneAndDelete({
+      _id: req.params.id,
+      company: req.user.company,
+    });
+
+    if (!deleted) {
+      return res.status(404).json({ message: "Product not found" });
+    }
+
+    res.json({ message: "Product deleted" });
+  } catch (err) {
+    console.error("Error deleting product:", err);
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ============================================================
+// UPDATE PRODUCT STOCK
 // ============================================================
 router.patch("/product/:id/stock", auth, async (req, res) => {
   try {
@@ -674,7 +598,7 @@ router.patch("/product/:id/stock", auth, async (req, res) => {
 });
 
 // ============================================================
-// BULK STOCK UPDATE (VENDOR)
+// BULK STOCK UPDATE
 // ============================================================
 router.patch("/bulk-stock", auth, async (req, res) => {
   try {
@@ -737,28 +661,55 @@ router.patch("/bulk-stock", auth, async (req, res) => {
 });
 
 // ============================================================
-// VENDOR – DELETE PRODUCT
+// DOWNLOAD EXCEL TEMPLATE
 // ============================================================
-router.delete("/:id", auth, async (req, res) => {
+router.get("/download-template", auth, (req, res) => {
   try {
-    const deleted = await Product.findOneAndDelete({
-      _id: req.params.id,
-      company: req.user.company,
-    });
+    const templateData = [
+      {
+        "Name": "Sample Product 1",
+        "Description": "This is a sample product description",
+        "Price": 99.99,
+        "Category": "Electronics",
+        "Stock": 10,
+        "Size": "M",
+        "Weight": 250,
+        "WeightUnit": "g",
+        "SKU": "PRD-001",
+        "Variant": "Red",
+        "Length": 10,
+        "Width": 5,
+        "Height": 2,
+        "DimensionUnit": "cm",
+        "Images": "/uploads/sample-image1.jpg, /uploads/sample-image2.jpg"
+      }
+    ];
 
-    if (!deleted) {
-      return res.status(404).json({ message: "Product not found" });
-    }
-
-    res.json({ message: "Product deleted" });
+    const worksheet = XLSX.utils.json_to_sheet(templateData);
+    
+    worksheet['!cols'] = [
+      { wch: 20 }, { wch: 40 }, { wch: 12 }, { wch: 15 },
+      { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 12 },
+      { wch: 15 }, { wch: 15 }, { wch: 10 }, { wch: 10 },
+      { wch: 10 }, { wch: 12 }, { wch: 50 }
+    ];
+    
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Products");
+    
+    const excelBuffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+    
+    res.setHeader("Content-Disposition", "attachment; filename=product_template.xlsx");
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.send(excelBuffer);
   } catch (err) {
-    console.error("Error deleting product:", err);
+    console.error("Error downloading template:", err);
     res.status(500).json({ message: err.message });
   }
 });
 
 // ============================================================
-// IMAGE UPLOADER - UPLOAD SINGLE IMAGE
+// IMAGE UPLOADER ROUTES
 // ============================================================
 router.post("/upload-image", auth, upload.single("image"), async (req, res) => {
   try {
@@ -777,7 +728,7 @@ router.post("/upload-image", auth, upload.single("image"), async (req, res) => {
       data: {
         filename: req.file.filename,
         path: imagePath,
-        url: `https://api.brandelvendor.starlighttechlabsindia.com${imagePath}`,
+        url: `${process.env.BASE_URL || 'https://api.brandelvendor.starlighttechlabsindia.com'}${imagePath}`,
         size: req.file.size,
         mimetype: req.file.mimetype,
       },
@@ -791,9 +742,6 @@ router.post("/upload-image", auth, upload.single("image"), async (req, res) => {
   }
 });
 
-// ============================================================
-// IMAGE UPLOADER - UPLOAD MULTIPLE IMAGES
-// ============================================================
 router.post("/upload-images", auth, upload.array("images", 10), async (req, res) => {
   try {
     if (!req.files || req.files.length === 0) {
@@ -806,7 +754,7 @@ router.post("/upload-images", auth, upload.array("images", 10), async (req, res)
     const uploadedImages = req.files.map((file) => ({
       filename: file.filename,
       path: `/uploads/${file.filename}`,
-      url: `https://api.brandelvendor.starlighttechlabsindia.com/uploads/${file.filename}`,
+      url: `${process.env.BASE_URL || 'https://api.brandelvendor.starlighttechlabsindia.com'}/uploads/${file.filename}`,
       size: file.size,
       mimetype: file.mimetype,
     }));
@@ -825,9 +773,6 @@ router.post("/upload-images", auth, upload.array("images", 10), async (req, res)
   }
 });
 
-// ============================================================
-// IMAGE UPLOADER - DELETE IMAGE
-// ============================================================
 router.delete("/image/:filename", auth, async (req, res) => {
   try {
     const { filename } = req.params;
@@ -842,7 +787,6 @@ router.delete("/image/:filename", auth, async (req, res) => {
 
     fs.unlinkSync(imagePath);
 
-    // Also remove from product images if referenced
     await Product.updateMany(
       { vendorId: req.user.id, image: `/uploads/${filename}` },
       { $pull: { image: `/uploads/${filename}` } }
@@ -861,9 +805,6 @@ router.delete("/image/:filename", auth, async (req, res) => {
   }
 });
 
-// ============================================================
-// IMAGE UPLOADER - LIST ALL IMAGES
-// ============================================================
 router.get("/images/list", auth, async (req, res) => {
   try {
     const uploadPath = path.join(__dirname, "../uploads");
@@ -881,7 +822,7 @@ router.get("/images/list", auth, async (req, res) => {
       .map((file) => ({
         filename: file,
         path: `/uploads/${file}`,
-        url: `https://api.brandelvendor.starlighttechlabsindia.com/uploads/${file}`,
+        url: `${process.env.BASE_URL || 'https://api.brandelvendor.starlighttechlabsindia.com'}/uploads/${file}`,
         size: fs.statSync(path.join(uploadPath, file)).size,
         uploadedAt: fs.statSync(path.join(uploadPath, file)).mtime,
       }));

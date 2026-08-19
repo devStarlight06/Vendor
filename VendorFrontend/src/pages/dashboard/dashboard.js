@@ -1,4 +1,4 @@
-// vendor/Dashboard.js - Using existing endpoint for status
+// vendor/Dashboard.js - UPDATED WITH PLAN DISPLAY, FREE MONTHS & COMMISSION
 
 import React, { useEffect, useState } from "react";
 import { Container, Row, Col, Card, Spinner, Badge, Alert, Table } from "react-bootstrap"; 
@@ -12,7 +12,10 @@ import {
   FaRocket,
   FaChartLine,
   FaInfoCircle,
-  FaBan
+  FaBan,
+  FaTag,
+  FaCheckCircle,
+  FaCalendarAlt
 } from "react-icons/fa";
 import {
   LineChart,
@@ -30,6 +33,88 @@ import "./dashboard.css";
 
 const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5001/api";
 
+// ✅ Plan Configuration
+const PLAN_DETAILS = {
+  'STARTER': {
+    name: 'STARTER',
+    monthlyFee: 499,
+    commissionRate: 12,
+    color: '#6c757d',
+    bgColor: '#f8f9fa',
+    borderColor: '#6c757d',
+    description: 'Best for new sellers',
+    features: [
+      'Up to 25 product listings',
+      '1 Homepage Feature/month',
+      '2 Category Features/month',
+      '3 Social Media Feature/month',
+      'Seller Dashboard & Analytics',
+      'Access to Seasonal Campaigns'
+    ]
+  },
+  'GROWTH': {
+    name: 'GROWTH',
+    monthlyFee: 1499,
+    commissionRate: 9,
+    color: '#007bff',
+    bgColor: '#cce5ff',
+    borderColor: '#007bff',
+    description: 'For growing businesses',
+    features: [
+      'Up to 100 product listings',
+      '2 Homepage Feature/month',
+      '4 Category Features/month',
+      '5 Social Media Features/month',
+      'Seller Dashboard & Analytics',
+      'Order Management',
+      'Access to Seasonal Campaigns'
+    ]
+  },
+  'PREMIUM': {
+    name: 'PREMIUM',
+    monthlyFee: 3999,
+    commissionRate: 6,
+    color: '#ffc107',
+    bgColor: '#fff3cd',
+    borderColor: '#ffc107',
+    description: 'For established brands',
+    features: [
+      'Unlimited Listings',
+      '4 Homepage Features/month',
+      '8 Category Features/month',
+      'Advanced Analytics',
+      'Priority Support'
+    ]
+  }
+};
+
+// ✅ Free Months Configuration
+const FREE_MONTHS = [
+  { month: 'September 2026', isFree: true, description: '🎉 Launch Offer - 0% Commission' },
+  { month: 'November 2026', isFree: true, description: '🎉 Free Month Offer - 0% Commission' }
+];
+
+const getPlanDetails = (planKey) => {
+  return PLAN_DETAILS[planKey] || PLAN_DETAILS['STARTER'];
+};
+
+const isCurrentMonthFree = () => {
+  const now = new Date();
+  const month = now.toLocaleString('en-US', { month: 'long' });
+  const year = now.getFullYear();
+  const currentMonth = `${month} ${year}`;
+  return FREE_MONTHS.some(fm => fm.month === currentMonth && fm.isFree);
+};
+
+const getCurrentFreeMonthDescription = () => {
+  const now = new Date();
+  const month = now.toLocaleString('en-US', { month: 'long' });
+  const year = now.getFullYear();
+  const currentMonth = `${month} ${year}`;
+  const freeMonth = FREE_MONTHS.find(fm => fm.month === currentMonth && fm.isFree);
+  return freeMonth?.description || null;
+};
+
 const Dashboard = () => {
   const [orders, setOrders] = useState([]);
   const [earnings, setEarnings] = useState([]);
@@ -40,8 +125,9 @@ const Dashboard = () => {
   const [vendorPlan, setVendorPlan] = useState(null);
   const [commissionRate, setCommissionRate] = useState(0);
   const [totalOrdersCount, setTotalOrdersCount] = useState(0);
+  const [vendorData, setVendorData] = useState(null);
   
-  // ✅ Suspension state - will be populated from vendor data
+  // Suspension state
   const [suspensionInfo, setSuspensionInfo] = useState({
     isSuspended: false,
     reason: '',
@@ -49,28 +135,47 @@ const Dashboard = () => {
     statusHistory: []
   });
 
+  // ✅ Free month state
+  const [isFreeMonth, setIsFreeMonth] = useState(false);
+  const [freeMonthDescription, setFreeMonthDescription] = useState(null);
+
   useEffect(() => {
     const fetchDashboard = async () => {
       try {
         const token = localStorage.getItem("token");
         const headers = { Authorization: `Bearer ${token}` };
 
-        // ✅ FIX: Use existing endpoint to get vendor data (includes status)
+        // ✅ Check if current month is free
+        const free = isCurrentMonthFree();
+        setIsFreeMonth(free);
+        setFreeMonthDescription(getCurrentFreeMonthDescription());
+
+        // ✅ FETCH VENDOR DATA (Includes plan and status)
         let vendorData = null;
+        let planKey = 'STARTER';
+        let rate = 8;
+        
         try {
           const res = await fetch(`https://api.brandelsuperadmin.starlighttechlabsindia.com/api/customers/vendors/me`, { headers });
           if (res.ok) {
             const data = await res.json();
             vendorData = data.vendor || data;
-            console.log("Vendor data:", vendorData);
+            console.log("✅ Vendor data:", vendorData);
             
-            // ✅ Extract status info from vendor data
             if (vendorData) {
-              setVendorPlan(vendorData);
-              const rate = vendorData.commissionRate || vendorData.commission_rate || 8;
-              setCommissionRate(rate);
+              setVendorData(vendorData);
+              planKey = vendorData.plan || 'STARTER';
+              rate = vendorData.commissionRate || vendorData.commission_rate || 8;
               
-              // ✅ Set suspension info from vendor data
+              // ✅ If free month, override commission to 0
+              if (free) {
+                rate = 0;
+              }
+              
+              setCommissionRate(rate);
+              setVendorPlan(vendorData);
+              
+              // Set suspension info
               if (vendorData.status === 'suspended') {
                 setSuspensionInfo({
                   isSuspended: true,
@@ -94,13 +199,19 @@ const Dashboard = () => {
               const data = await planRes.json();
               const vendorData = data.vendor || data;
               setVendorPlan(vendorData);
-              const rate = vendorData.commissionRate || vendorData.commission_rate || 8;
+              planKey = vendorData.plan || 'STARTER';
+              rate = vendorData.commissionRate || vendorData.commission_rate || 8;
+              if (free) rate = 0;
               setCommissionRate(rate);
             }
           }
         } catch (planErr) {
           console.warn("Plan fetch error:", planErr.message);
         }
+
+        // ✅ Get plan details
+        const planDetails = getPlanDetails(planKey);
+        console.log("📋 Plan Details:", planDetails);
 
         // ===== 2. FETCH ORDERS =====
         const ordersRes = await fetch(`${API_BASE}/orders/my-orders`, { headers });
@@ -127,7 +238,7 @@ const Dashboard = () => {
         setTotalOrdersCount(ordersData.length);
 
         // ===== 4. PROCESS STATS =====
-        const rate = commissionRate || 8;
+        const rateFinal = commissionRate || 8;
         const earningsList = earningsData.earnings || earningsData || [];
         
         const totalSales = earningsList.reduce((sum, e) => sum + (e.totalSales || e.amount || 0), 0);
@@ -142,8 +253,8 @@ const Dashboard = () => {
             color: "#4CAF50"
           },
           {
-            title: `Admin Commission`,
-            value: `₹${totalAdminPay.toLocaleString("en-IN")}`,
+            title: free ? `Admin Commission (0% - Free Month)` : `Admin Commission (${rateFinal}%)`,
+            value: free ? `₹0` : `₹${totalAdminPay.toLocaleString("en-IN")}`,
             icon: <FaChartLine />,
             color: "#FF9800"
           },
@@ -188,9 +299,10 @@ const Dashboard = () => {
   const getPlanIcon = (plan) => {
     if (!plan) return <FaInfoCircle className="me-2" />;
     const icons = {
-      'founding': <FaRocket className="me-2" />,
-      'growth': <FaChartLine className="me-2" />,
-      'premium': <FaCrown className="me-2" />
+      'STARTER': <FaRocket className="me-2" />,
+      'GROWTH': <FaChartLine className="me-2" />,
+      'PREMIUM': <FaCrown className="me-2" />,
+      'founding': <FaRocket className="me-2" />
     };
     return icons[plan] || <FaInfoCircle className="me-2" />;
   };
@@ -198,9 +310,10 @@ const Dashboard = () => {
   const getPlanColor = (plan) => {
     if (!plan) return 'secondary';
     const colors = {
-      'founding': 'success',
-      'growth': 'primary',
-      'premium': 'warning'
+      'STARTER': 'secondary',
+      'GROWTH': 'primary',
+      'PREMIUM': 'warning',
+      'founding': 'success'
     };
     return colors[plan] || 'secondary';
   };
@@ -208,9 +321,10 @@ const Dashboard = () => {
   const getPlanName = (plan) => {
     if (!plan) return 'No Plan';
     const names = {
-      'founding': 'Founding 100',
-      'growth': 'Growth Seller',
-      'premium': 'Premium Brand'
+      'STARTER': 'STARTER',
+      'GROWTH': 'GROWTH',
+      'PREMIUM': 'PREMIUM',
+      'founding': 'Founding 100'
     };
     return names[plan] || plan;
   };
@@ -233,6 +347,8 @@ const Dashboard = () => {
   }
 
   const hasPlan = vendorPlan && vendorPlan.plan;
+  const planKey = vendorPlan?.plan || 'STARTER';
+  const planDetails = getPlanDetails(planKey);
 
   return (
     <>
@@ -265,6 +381,42 @@ const Dashboard = () => {
               </Alert>
             )}
 
+            {/* 🎉 FREE MONTH ALERT */}
+            {isFreeMonth && !suspensionInfo.isSuspended && (
+              <Alert variant="success" className="mb-4">
+                <div className="d-flex align-items-start">
+                  <FaRocket className="me-3 mt-1" style={{ fontSize: '32px' }} />
+                  <div>
+                    <h5 className="mb-1">🎉 {freeMonthDescription || 'Free Month Offer!'}</h5>
+                    <p className="mb-0">
+                      <strong>0% Commission</strong> on all your sales during this month!
+                      <br />
+                      <small className="text-muted">Normal commission will resume from next month.</small>
+                    </p>
+                  </div>
+                </div>
+              </Alert>
+            )}
+
+            {/* 📅 Upcoming Free Months */}
+            {!isFreeMonth && !suspensionInfo.isSuspended && (
+              <Alert variant="info" className="mb-4">
+                <div className="d-flex align-items-start">
+                  <FaCalendarAlt className="me-3 mt-1" style={{ fontSize: '28px' }} />
+                  <div>
+                    <h6 className="mb-1">📅 Upcoming Free Months</h6>
+                    <ul className="mb-0 ps-3">
+                      {FREE_MONTHS.map((fm, idx) => (
+                        <li key={idx}>
+                          <strong>{fm.month}</strong> - {fm.description}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              </Alert>
+            )}
+
             {/* ===== PLAN CARD ===== */}
             {hasPlan ? (
               <motion.div
@@ -272,34 +424,93 @@ const Dashboard = () => {
                 animate={{ opacity: 1, y: 0 }}
                 className="mb-4"
               >
-                <Card className={`plan-card-simple ${suspensionInfo.isSuspended ? 'border-danger' : ''}`}>
-                  <Card.Body className="d-flex align-items-center justify-content-between flex-wrap">
-                    <div className="d-flex align-items-center">
-                      <span className="plan-icon-small">
-                        {getPlanIcon(vendorPlan.plan)}
-                      </span>
-                      <div className="ms-2">
-                        <span className="plan-name">
-                          Plan: {getPlanName(vendorPlan.plan)}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="d-flex gap-2 flex-wrap">
-                      <Badge bg={getPlanColor(vendorPlan.plan)} pill>
-                        {vendorPlan.plan.toUpperCase()}
-                      </Badge>
-                      <Badge bg="info" pill>
-                        Commission: {commissionRate || 8}%
-                      </Badge>
-                      {vendorPlan.plan === 'founding' && commissionRate === 0 && (
-                        <Badge bg="warning" pill className="text-dark">
-                          🔥 Offer Active
-                        </Badge>
-                      )}
-                      <Badge bg={suspensionInfo.isSuspended ? 'danger' : (vendorPlan.status === 'active' ? 'success' : 'warning')} pill>
-                        {suspensionInfo.isSuspended ? '🚫 SUSPENDED' : (vendorPlan.status || 'active')}
-                      </Badge>
-                    </div>
+                <Card className={`plan-card-detailed ${suspensionInfo.isSuspended ? 'border-danger opacity-50' : ''}`}>
+                  <Card.Body>
+                    <Row>
+                      <Col lg={4}>
+                        <div className="d-flex align-items-center">
+                          <div 
+                            className="plan-icon-wrapper"
+                            style={{ 
+                              backgroundColor: `${planDetails.color}20`,
+                              color: planDetails.color,
+                              width: '60px',
+                              height: '60px',
+                              borderRadius: '12px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: '28px'
+                            }}
+                          >
+                            {getPlanIcon(planKey)}
+                          </div>
+                          <div className="ms-3">
+                            <h5 className="mb-0" style={{ color: planDetails.color }}>
+                              {planDetails.name}
+                            </h5>
+                            <div className="d-flex gap-2 mt-1 flex-wrap">
+                              <Badge bg={getPlanColor(planKey)} pill>
+                                {planKey.toUpperCase()}
+                              </Badge>
+                              <Badge 
+                                bg={isFreeMonth ? 'success' : 'info'} 
+                                pill
+                              >
+                                {isFreeMonth ? '🎉 0% Commission' : `Commission: ${planDetails.commissionRate}%`}
+                              </Badge>
+                              <Badge 
+                                style={{ 
+                                  backgroundColor: planDetails.bgColor,
+                                  color: planDetails.color,
+                                  border: `1px solid ${planDetails.color}`
+                                }}
+                                pill
+                              >
+                                <FaRupeeSign size={10} /> {planDetails.monthlyFee.toLocaleString()}/mo
+                              </Badge>
+                              <Badge bg={suspensionInfo.isSuspended ? 'danger' : (vendorData?.status === 'active' ? 'success' : 'warning')} pill>
+                                {suspensionInfo.isSuspended ? '🚫 SUSPENDED' : (vendorData?.status || 'active').toUpperCase()}
+                              </Badge>
+                            </div>
+                          </div>
+                        </div>
+                      </Col>
+                      <Col lg={8}>
+                        <Row>
+                          <Col md={6}>
+                            <div className="plan-description">
+                              <small className="text-muted">{planDetails.description}</small>
+                              {isFreeMonth && (
+                                <div className="mt-1">
+                                  <Badge bg="success" style={{ fontSize: '12px' }}>
+                                    🎉 0% Commission Active
+                                  </Badge>
+                                </div>
+                              )}
+                            </div>
+                          </Col>
+                          <Col md={6}>
+                            <div className="plan-features-preview">
+                              <small className="text-muted d-block mb-1">Features:</small>
+                              <div className="d-flex flex-wrap gap-1">
+                                {planDetails.features.slice(0, 3).map((feature, idx) => (
+                                  <span key={idx} className="feature-tag">
+                                    <FaCheckCircle size={10} className="me-1" style={{ color: planDetails.color }} />
+                                    <small>{feature}</small>
+                                  </span>
+                                ))}
+                                {planDetails.features.length > 3 && (
+                                  <span className="feature-tag text-muted">
+                                    <small>+{planDetails.features.length - 3} more</small>
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </Col>
+                        </Row>
+                      </Col>
+                    </Row>
                   </Card.Body>
                 </Card>
               </motion.div>
@@ -364,14 +575,16 @@ const Dashboard = () => {
                     >
                       <Card className="chart-card">
                         <Card.Body>
-                          <h5 className="mb-3">Admin Earnings (Monthly)</h5>
+                          <h5 className="mb-3">
+                            {isFreeMonth ? 'Admin Commission (0% - Free Month)' : 'Admin Earnings (Monthly)'}
+                          </h5>
                           <ResponsiveContainer width="100%" height={250}>
                             <LineChart data={adminCommissionData.length > 0 ? adminCommissionData : [{ month: 'No Data', commission: 0 }]}>
                               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                               <XAxis dataKey="month" stroke="#888" fontSize={12} />
                               <YAxis stroke="#888" fontSize={12} />
                               <Tooltip formatter={(v) => `₹${Number(v).toLocaleString("en-IN")}`} />
-                              <Line type="monotone" dataKey="commission" stroke="#FF9800" strokeWidth={3} dot={{ fill: '#FF9800', r: 4 }} />
+                              <Line type="monotone" dataKey="commission" stroke={isFreeMonth ? '#28a745' : '#FF9800'} strokeWidth={3} dot={{ fill: isFreeMonth ? '#28a745' : '#FF9800', r: 4 }} />
                             </LineChart>
                           </ResponsiveContainer>
                         </Card.Body>
@@ -402,7 +615,7 @@ const Dashboard = () => {
                             <tr>
                               <th>Category</th>
                               <th>Sales Amount</th>
-                              <th>Commission ({commissionRate || 8}%)</th>
+                              <th>Commission ({isFreeMonth ? '0%' : (commissionRate || 8) + '%'})</th>
                               <th>Your Earnings</th>
                               <th>Date</th>
                             </tr>
@@ -422,7 +635,13 @@ const Dashboard = () => {
                                     <small className="text-muted">{item.category || 'General'}</small>
                                   </td>
                                   <td className="">₹{Number(item.totalSales || item.amount || 0).toFixed(2)}</td>
-                                  <td className="text-warning">₹{Number(item.adminCommission || item.commission || 0).toFixed(2)}</td>
+                                  <td className="text-warning">
+                                    {isFreeMonth ? (
+                                      <Badge bg="success">₹0</Badge>
+                                    ) : (
+                                      `₹${Number(item.adminCommission || item.commission || 0).toFixed(2)}`
+                                    )}
+                                  </td>
                                   <td className="text-success fw-bold">₹{Number(item.vendorPayout || item.vendorEarnings || 0).toFixed(2)}</td>
                                   <td>{item.date ? new Date(item.date).toLocaleDateString() : 'N/A'}</td>
                                 </tr>

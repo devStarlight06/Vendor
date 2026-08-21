@@ -342,7 +342,7 @@ const PublicDocumentUpload = () => {
       // Enhanced error message for CORS issues
       let errorMessage = "Failed to upload file. ";
       if (err.message === "Network Error") {
-        errorMessage += "Please check your internet connection and try again.";
+        errorMessage += "Please check your image size ";
       } else if (err.response?.data?.message) {
         errorMessage += err.response.data.message;
       } else {

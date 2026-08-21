@@ -1,4 +1,4 @@
-// models/Product.js - WITH SIZE/WEIGHT ATTRIBUTES
+// models/Product.js - ADD THUMBNAIL FIELDS
 const mongoose = require("mongoose");
 
 const productSchema = new mongoose.Schema({
@@ -48,7 +48,7 @@ const productSchema = new mongoose.Schema({
     default: true 
   },
 
-  // ✅ NEW: Size/Weight Attributes
+  // ✅ Size/Weight Attributes
   size: {
     type: String,
     default: ""
@@ -75,6 +75,33 @@ const productSchema = new mongoose.Schema({
   sku: {
     type: String,
     default: ""
+  },
+
+  // ✅ THUMBNAIL FIELDS (ADD THESE)
+  thumbnail_url: {
+    type: String,
+    default: null
+  },
+  thumbnail_status: {
+    type: String,
+    enum: ['NOT_STARTED', 'PROCESSING', 'COMPLETED', 'FAILED'],
+    default: 'NOT_STARTED'
+  },
+  thumbnail_generated_at: {
+    type: Date,
+    default: null
+  },
+  thumbnail_retry_count: {
+    type: Number,
+    default: 0
+  },
+  original_image_hash: {
+    type: String,
+    default: null
+  },
+  thumbnail_error: {
+    type: String,
+    default: null
   }
 }, { timestamps: true });
 

@@ -18,6 +18,10 @@ const sellerDocumentSchema = new mongoose.Schema(
       unique: true,
       index: true,
     },
+     website: {
+    type: String,
+    default: ""
+  },
 
     // Brand Information
     logo: {

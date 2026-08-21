@@ -51,11 +51,12 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
+// In sellerDocument.routes.js - Find this section
 const upload = multer({
   storage: storage,
   limits: {
-    fileSize: 10 * 1024 * 1024,
-    fieldSize: 10 * 1024 * 1024
+    fileSize: 50 * 1024 * 1024,  // ✅ Change from 10 to 50
+    fieldSize: 50 * 1024 * 1024   // ✅ Change from 10 to 50
   },
   fileFilter: fileFilter
 });

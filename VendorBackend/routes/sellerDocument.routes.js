@@ -1,4 +1,4 @@
-// sellerDocument.routes.js - With Per-Document Verification
+// sellerDocument.routes.js - FULL CORS SUPPORT
 const express = require("express");
 const router = express.Router();
 const multer = require("multer");
@@ -21,6 +21,39 @@ const {
 const generateTrackingId = () => {
   return 'DOC-' + crypto.randomBytes(6).toString('hex').toUpperCase();
 };
+
+// ============================================================
+// ✅ CORS MIDDLEWARE FOR ALL ROUTES
+// ============================================================
+router.use((req, res, next) => {
+  const allowedOrigins = [
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://localhost:3002",
+    "https://www.native91.com",
+    "https://native91.com",
+    "https://vendor.native91.com",
+    "https://api-admin.native91.com",
+    "https://api-vendor.native91.com",
+    "https://admin.native91.com"
+  ];
+  
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
+  
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Origin, X-Requested-With');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Max-Age', '86400');
+  
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+  
+  next();
+});
 
 // ============================================================
 // MULTER SETUP
@@ -185,7 +218,6 @@ router.post("/documents/save", async (req, res) => {
     // Handle logo
     if (data.logo) {
       document.logo = { ...document.logo, ...data.logo };
-      // If logo was rejected and now resubmitted, update status
       if (document.logo.status === 'rejected' && data.logo.image) {
         document.logo.status = 'resubmitted';
         document.logo.resubmittedAt = new Date();
@@ -201,14 +233,11 @@ router.post("/documents/save", async (req, res) => {
       }
     }
     
-    // Handle other sections with resubmission tracking
     const sections = ['aadhaar', 'pan', 'gst', 'bank', 'contact', 'business'];
     sections.forEach(section => {
       if (data[section]) {
         document[section] = { ...document[section], ...data[section] };
-        // Check if this section was rejected and now has new data
         if (document[section].status === 'rejected') {
-          // Check if any field in this section changed
           let hasChanges = false;
           const fields = Object.keys(data[section]);
           for (const field of fields) {
@@ -245,7 +274,7 @@ router.post("/documents/save", async (req, res) => {
 });
 
 // ============================================================
-// UPLOAD FILE
+// ✅ UPLOAD FILE (WITH FULL CORS)
 // ============================================================
 router.post("/documents/upload", upload.single("file"), async (req, res) => {
   try {
@@ -253,6 +282,7 @@ router.post("/documents/upload", upload.single("file"), async (req, res) => {
     
     console.log("📤 Uploading file for tracking ID:", trackingId);
     console.log("📤 Field:", field);
+    console.log("📤 File size:", req.file?.size);
     
     if (!req.file) {
       return res.status(400).json({
@@ -292,7 +322,6 @@ router.post("/documents/upload", upload.single("file"), async (req, res) => {
         }
       } else if (document[section]) {
         document[section][key] = fileUrl;
-        // If this section was rejected, mark as resubmitted
         if (document[section].status === 'rejected') {
           document[section].status = 'resubmitted';
           document[section].resubmittedAt = new Date();
@@ -343,7 +372,6 @@ router.post("/documents/submit", async (req, res) => {
       });
     }
 
-    // Check required fields
     const requiredFields = [
       { field: 'brand.description', label: 'Brand Description' },
       { field: 'aadhaar.number', label: 'Aadhaar Number' },
@@ -381,7 +409,6 @@ router.post("/documents/submit", async (req, res) => {
       });
     }
     
-    // Validate brand description minimum length
     if (document.brand && document.brand.description && document.brand.description.length < 20) {
       return res.status(400).json({
         success: false,
@@ -434,7 +461,6 @@ router.patch("/admin/documents/:documentId/reject-section", async (req, res) => 
       });
     }
     
-    // Check if section exists
     const sectionFields = ['logo', 'brand', 'aadhaar', 'pan', 'gst', 'bank', 'contact', 'business'];
     if (!sectionFields.includes(section)) {
       return res.status(400).json({
@@ -443,17 +469,13 @@ router.patch("/admin/documents/:documentId/reject-section", async (req, res) => 
       });
     }
     
-    // Update section status
     document[section].status = 'rejected';
     document[section].rejectionReason = reason;
     document[section].resubmittedAt = null;
-    
-    // Update overall document status
     document.status = 'partially_rejected';
     
     await document.save();
     
-    // Send rejection email for this specific section
     const sectionLabels = {
       logo: 'Company Logo',
       brand: 'Brand Description',
@@ -517,7 +539,6 @@ router.patch("/admin/documents/:documentId/verify-section", async (req, res) => 
       });
     }
     
-    // Check if section exists
     const sectionFields = ['logo', 'brand', 'aadhaar', 'pan', 'gst', 'bank', 'contact', 'business'];
     if (!sectionFields.includes(section)) {
       return res.status(400).json({
@@ -526,12 +547,10 @@ router.patch("/admin/documents/:documentId/verify-section", async (req, res) => 
       });
     }
     
-    // Update section status
     document[section].status = 'verified';
     document[section].rejectionReason = "";
     document[section].resubmittedAt = null;
     
-    // Check if all sections are verified
     let allVerified = true;
     const requiredSections = ['brand', 'aadhaar', 'pan', 'bank', 'contact', 'business'];
     for (const sec of requiredSections) {
@@ -545,7 +564,6 @@ router.patch("/admin/documents/:documentId/verify-section", async (req, res) => 
       document.status = 'verified';
       document.verificationDate = new Date();
       
-      // Create vendor account
       const generatePassword = () => {
         const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
         let password = '';
@@ -610,7 +628,6 @@ router.patch("/admin/documents/:documentId/verify-section", async (req, res) => 
       document.credentialsSent = true;
       document.credentialsSentAt = new Date();
       
-      // Send vendor creation email
       const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
       const loginUrl = `${frontendUrl}/login`;
       
@@ -630,7 +647,6 @@ router.patch("/admin/documents/:documentId/verify-section", async (req, res) => 
         console.error("❌ Credentials email error:", emailErr);
       }
     } else {
-      // Check if any sections are still rejected
       let hasRejected = false;
       for (const sec of requiredSections) {
         if (document[sec].status === 'rejected') {
@@ -674,7 +690,6 @@ router.get("/admin/documents/:id", async (req, res) => {
       });
     }
     
-    // Prepare section status summary
     const sections = ['logo', 'brand', 'aadhaar', 'pan', 'gst', 'bank', 'contact', 'business'];
     const sectionStatus = {};
     sections.forEach(section => {
@@ -782,7 +797,7 @@ router.get("/admin/documents/stats", async (req, res) => {
 });
 
 // ============================================================
-// OTHER ROUTES (keep existing)
+// OTHER ROUTES
 // ============================================================
 router.get("/documents/email/:email", async (req, res) => {
   try {

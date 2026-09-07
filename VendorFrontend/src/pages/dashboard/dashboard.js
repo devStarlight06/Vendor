@@ -156,7 +156,7 @@ const Dashboard = () => {
         let rate = 8;
         
         try {
-          const res = await fetch(`https://api.brandelsuperadmin.starlighttechlabsindia.com/api/customers/vendors/me`, { headers });
+          const res = await fetch(`https://api-admin.native91.com/api/customers/vendors/me`, { headers });
           if (res.ok) {
             const data = await res.json();
             vendorData = data.vendor || data;

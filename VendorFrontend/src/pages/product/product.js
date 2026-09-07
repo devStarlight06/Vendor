@@ -1,4 +1,5 @@
-// Product.js - UPDATED WITH IMAGE UPLOADER SUPPORT
+// Product.js - COMPLETE UPDATED FILE WITH SHIPPING TIME FIELDS
+
 import { useState, useEffect } from "react";
 import axios from "axios";
 import {
@@ -34,20 +35,25 @@ import {
   FaRulerCombined,
   FaImage,
   FaUpload,
-  FaTimes
+  FaTimes,
+  FaDownload,
+  FaArrowLeft,
+  FaArrowRight,
+  FaTruck,
+  FaRupeeSign
 } from "react-icons/fa";
 import Header from "../../component/header/header";
 import Sidebar from "../../component/sidebar/sidebar";
 
- const API_URL = "https://api-vendor.native91.com/api/products";
+const API_URL = "https://api-vendor.native91.com/api/products";
 const ADMIN_CATEGORY_API_URL = "https://api-admin.native91.com/api/category";
- const AUTH_API_URL = "https://api-vendor.native91.com/api/vendor";
- const BASE_URL = "https://api-vendor.native91.com";
+const AUTH_API_URL = "https://api-vendor.native91.com/api/vendor";
+const BASE_URL = "https://api-vendor.native91.com";
 
-//const API_URL = "http://localhost:5001/api/products";
-//const ADMIN_CATEGORY_API_URL = "http://localhost:7000/api/category";
-//const AUTH_API_URL = "http://localhost:5001/api/vendor";
-//const BASE_URL = "http://localhost:5001";
+// const API_URL = "http://localhost:5177/api/products";
+// const ADMIN_CATEGORY_API_URL = "http://localhost:7001/api/category";
+// const AUTH_API_URL = "http://localhost:5177/api/vendor";
+// const BASE_URL = "http://localhost:5177";
 
 const Product = () => {
   const [products, setProducts] = useState([]);
@@ -62,7 +68,6 @@ const Product = () => {
   const [showAdd, setShowAdd] = useState(false);
   const [showBulkUpload, setShowBulkUpload] = useState(false);
   const [showStockModal, setShowStockModal] = useState(false);
-  const [showImageUploader, setShowImageUploader] = useState(false);
 
   const [editData, setEditData] = useState(null);
   const [newProduct, setNewProduct] = useState({
@@ -82,8 +87,19 @@ const Product = () => {
       width: 0,
       height: 0,
       unit: "cm"
-    }
+    },
+    // 🚚 Shipping fields
+    shippingTime: "3-5 days",
+    customShippingTime: "",
+    estimatedDeliveryDays: {
+      min: 3,
+      max: 5
+    },
+    shippingCharge: 0,
+    isFreeShipping: true
   });
+
+  const [shippingOptions, setShippingOptions] = useState([]);
 
   const [stockUpdateData, setStockUpdateData] = useState({
     productId: "",
@@ -99,10 +115,13 @@ const Product = () => {
   const [uploadProgress, setUploadProgress] = useState(false);
   const [uploadResult, setUploadResult] = useState(null);
 
-  // Image Uploader States
-  const [selectedImages, setSelectedImages] = useState([]);
-  const [imageUploadProgress, setImageUploadProgress] = useState(false);
-  const [uploadedImageUrls, setUploadedImageUrls] = useState([]);
+  // ================= ENHANCED BULK UPLOAD STATES =================
+  const [uploadStep, setUploadStep] = useState(1);
+  const [validationData, setValidationData] = useState(null);
+  const [processingProgress, setProcessingProgress] = useState(0);
+  const [showValidationPreview, setShowValidationPreview] = useState(false);
+
+  // Image Uploader States (kept for internal use)
   const [imageList, setImageList] = useState([]);
   const [loadingImages, setLoadingImages] = useState(false);
 
@@ -121,6 +140,32 @@ const Product = () => {
     reason: '',
     suspendedAt: null
   });
+
+  // ================= FETCH SHIPPING OPTIONS =================
+  const fetchShippingOptions = async () => {
+    try {
+      const res = await axios.get(`${API_URL}/shipping-options`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.data.success) {
+        setShippingOptions(res.data.shippingOptions);
+      }
+    } catch (err) {
+      console.error("Error fetching shipping options:", err);
+      // Fallback options
+      setShippingOptions([
+        { value: '1-2 days', label: '1-2 days' },
+        { value: '2-3 days', label: '2-3 days' },
+        { value: '3-4 days', label: '3-4 days' },
+        { value: '3-5 days', label: '3-5 days' },
+        { value: '5-7 days', label: '5-7 days' },
+        { value: '7-10 days', label: '7-10 days' },
+        { value: '10-15 days', label: '10-15 days' },
+        { value: '15-30 days', label: '15-30 days' },
+        { value: 'Custom', label: 'Custom (specify custom shipping time)' }
+      ]);
+    }
+  };
 
   // ================= CHECK VENDOR STATUS =================
   const checkVendorStatus = async () => {
@@ -214,24 +259,6 @@ const Product = () => {
     }
   };
 
-  // ================= FETCH IMAGES LIST =================
-  const fetchImagesList = async () => {
-    try {
-      setLoadingImages(true);
-      const res = await axios.get(`${API_URL}/images/list`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.data.success) {
-        setImageList(res.data.data);
-      }
-    } catch (err) {
-      console.error("Error fetching images:", err);
-      setError("Failed to load images");
-    } finally {
-      setLoadingImages(false);
-    }
-  };
-
   // ================= CALCULATE STOCK SUMMARY =================
   const calculateStockSummary = (productList) => {
     const summary = {
@@ -273,7 +300,7 @@ const Product = () => {
     const initialize = async () => {
       const isSuspended = await checkVendorStatus();
       if (!isSuspended) {
-        await Promise.all([fetchProducts(), fetchCategories()]);
+        await Promise.all([fetchProducts(), fetchCategories(), fetchShippingOptions()]);
       } else {
         setLoading(false);
         setCategoriesLoading(false);
@@ -321,6 +348,14 @@ const Product = () => {
       formData.append("dimensions[height]", newProduct.dimensions?.height || 0);
       formData.append("dimensions[unit]", newProduct.dimensions?.unit || "cm");
 
+      // 🚚 Append shipping fields
+      formData.append("shippingTime", newProduct.shippingTime || "3-5 days");
+      formData.append("customShippingTime", newProduct.customShippingTime || "");
+      formData.append("estimatedDeliveryDays[min]", newProduct.estimatedDeliveryDays?.min || 3);
+      formData.append("estimatedDeliveryDays[max]", newProduct.estimatedDeliveryDays?.max || 5);
+      formData.append("shippingCharge", newProduct.shippingCharge || 0);
+      formData.append("isFreeShipping", newProduct.isFreeShipping ? "true" : "false");
+
       if (newProduct.images && newProduct.images.length > 0) {
         newProduct.images.forEach((file) => {
           formData.append("images", file);
@@ -351,7 +386,15 @@ const Product = () => {
           width: 0,
           height: 0,
           unit: "cm"
-        }
+        },
+        shippingTime: "3-5 days",
+        customShippingTime: "",
+        estimatedDeliveryDays: {
+          min: 3,
+          max: 5
+        },
+        shippingCharge: 0,
+        isFreeShipping: true
       });
 
       fetchProducts();
@@ -370,7 +413,12 @@ const Product = () => {
     }
     setEditData({ 
       ...product,
-      dimensions: product.dimensions || { length: 0, width: 0, height: 0, unit: "cm" }
+      dimensions: product.dimensions || { length: 0, width: 0, height: 0, unit: "cm" },
+      estimatedDeliveryDays: product.estimatedDeliveryDays || { min: 3, max: 5 },
+      shippingTime: product.shippingTime || "3-5 days",
+      customShippingTime: product.customShippingTime || "",
+      shippingCharge: product.shippingCharge || 0,
+      isFreeShipping: product.isFreeShipping !== undefined ? product.isFreeShipping : true
     });
     setShowEdit(true);
   };
@@ -399,6 +447,14 @@ const Product = () => {
       formData.append("dimensions[width]", editData.dimensions?.width || 0);
       formData.append("dimensions[height]", editData.dimensions?.height || 0);
       formData.append("dimensions[unit]", editData.dimensions?.unit || "cm");
+
+      // 🚚 Append shipping fields
+      formData.append("shippingTime", editData.shippingTime || "3-5 days");
+      formData.append("customShippingTime", editData.customShippingTime || "");
+      formData.append("estimatedDeliveryDays[min]", editData.estimatedDeliveryDays?.min || 3);
+      formData.append("estimatedDeliveryDays[max]", editData.estimatedDeliveryDays?.max || 5);
+      formData.append("shippingCharge", editData.shippingCharge || 0);
+      formData.append("isFreeShipping", editData.isFreeShipping ? "true" : "false");
 
       if (editData.newImages && editData.newImages.length > 0) {
         editData.newImages.forEach((file) => {
@@ -515,7 +571,7 @@ const Product = () => {
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement("a");
       link.href = url;
-      link.setAttribute("download", "product_template_with_categories.xlsx");
+      link.setAttribute("download", "product_bulk_upload_template.xlsx");
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -529,13 +585,49 @@ const Product = () => {
     }
   };
 
-  // ================= BULK UPLOAD =================
-  const handleBulkUpload = async () => {
-    if (suspensionInfo.isSuspended) {
-      setError("Cannot upload products while account is suspended.");
+  // ================= ENHANCED BULK UPLOAD FUNCTIONS =================
+
+  // Validate Excel file before upload
+  const handleValidateExcel = async () => {
+    if (!excelFile) {
+      setError("Please select an Excel file");
       return;
     }
-    
+
+    const formData = new FormData();
+    formData.append("excelFile", excelFile);
+
+    setUploadProgress(true);
+    setError("");
+
+    try {
+      const response = await axios.post(
+        `${API_URL}/bulk-upload/validate`,
+        formData,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "multipart/form-data",
+          },
+        }
+      );
+
+      if (response.data.success) {
+        setValidationData(response.data.data);
+        setUploadStep(2);
+        setShowValidationPreview(true);
+        setSuccess(`✅ File validated! ${response.data.data.summary.valid} valid rows found.`);
+      }
+    } catch (err) {
+      console.error("Validation error:", err);
+      setError(err.response?.data?.message || "Validation failed");
+    } finally {
+      setUploadProgress(false);
+    }
+  };
+
+  // Process the bulk upload
+  const handleProcessBulkUpload = async () => {
     if (!excelFile) {
       setError("Please select an Excel file");
       return;
@@ -552,23 +644,33 @@ const Product = () => {
 
     setUploadProgress(true);
     setUploadResult(null);
+    setProcessingProgress(0);
 
     try {
-      const response = await axios.post(`${API_URL}/bulk-upload`, formData, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "multipart/form-data",
-        },
-      });
+      const response = await axios.post(
+        `${API_URL}/bulk-upload/process`,
+        formData,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "multipart/form-data",
+          },
+          onUploadProgress: (progressEvent) => {
+            const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+            setProcessingProgress(percentCompleted);
+          },
+        }
+      );
 
       setUploadResult(response.data);
       
-      if (response.data.successfulRows > 0) {
-        setSuccess(`✅ ${response.data.message} (${response.data.imagesUploaded || 0} images uploaded)`);
+      if (response.data.summary.successful > 0) {
+        setSuccess(`✅ ${response.data.message}`);
         fetchProducts();
-        setShowBulkUpload(false);
-        setExcelFile(null);
-        setBulkImages([]);
+        setTimeout(() => {
+          setShowBulkUpload(false);
+          resetBulkUpload();
+        }, 2000);
       } else {
         setError("No products were uploaded. Please check the file format.");
       }
@@ -577,78 +679,19 @@ const Product = () => {
       setError(err.response?.data?.message || "Bulk upload failed");
     } finally {
       setUploadProgress(false);
+      setProcessingProgress(100);
     }
   };
 
-  // ================= IMAGE UPLOADER FUNCTIONS =================
-  
-  // Upload images using the new image uploader endpoint
-  const handleImageUpload = async () => {
-    if (selectedImages.length === 0) {
-      setError("Please select images to upload");
-      return;
-    }
-
-    setImageUploadProgress(true);
-    setError("");
-
-    try {
-      const formData = new FormData();
-      selectedImages.forEach((file) => {
-        formData.append("images", file);
-      });
-
-      const response = await axios.post(`${API_URL}/upload-images`, formData, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "multipart/form-data",
-        },
-        onUploadProgress: (progressEvent) => {
-          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-          console.log(`Upload Progress: ${percentCompleted}%`);
-        },
-      });
-
-      if (response.data.success) {
-        const uploadedImages = response.data.data;
-        setUploadedImageUrls(uploadedImages.map(img => img.path));
-        setSuccess(`✅ ${uploadedImages.length} images uploaded successfully!`);
-        setSelectedImages([]);
-        fetchImagesList(); // Refresh the image list
-      }
-    } catch (err) {
-      console.error("Image upload error:", err);
-      setError(err.response?.data?.message || "Failed to upload images");
-    } finally {
-      setImageUploadProgress(false);
-    }
-  };
-
-  // Delete an image
-  const handleDeleteImage = async (filename) => {
-    if (!window.confirm(`Are you sure you want to delete ${filename}?`)) return;
-
-    try {
-      await axios.delete(`${API_URL}/image/${filename}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setSuccess(`✅ Image deleted successfully!`);
-      fetchImagesList();
-    } catch (err) {
-      console.error("Image delete error:", err);
-      setError(err.response?.data?.message || "Failed to delete image");
-    }
-  };
-
-  // Select images for upload
-  const handleImageSelect = (e) => {
-    const files = Array.from(e.target.files);
-    setSelectedImages(files);
-  };
-
-  // Remove selected image
-  const removeSelectedImage = (index) => {
-    setSelectedImages(selectedImages.filter((_, i) => i !== index));
+  // Reset bulk upload state
+  const resetBulkUpload = () => {
+    setUploadStep(1);
+    setValidationData(null);
+    setExcelFile(null);
+    setBulkImages([]);
+    setUploadResult(null);
+    setProcessingProgress(0);
+    setShowValidationPreview(false);
   };
 
   // ================= GET IMAGE URL =================
@@ -682,6 +725,24 @@ const Product = () => {
     }
     
     return `${BASE_URL}${imagePath}`;
+  };
+
+  // 🚚 Get shipping display text
+  const getShippingDisplay = (product) => {
+    if (!product) return "—";
+    
+    let shippingText = product.shippingTime || "3-5 days";
+    
+    if (shippingText === "Custom" && product.customShippingTime) {
+      shippingText = product.customShippingTime;
+    }
+    
+    const charge = product.shippingCharge || 0;
+    const isFree = product.isFreeShipping !== undefined ? product.isFreeShipping : true;
+    
+    let chargeText = isFree ? "Free" : `₹${charge}`;
+    
+    return `${chargeText} • ${shippingText}`;
   };
 
   // ================= RENDER =================
@@ -798,13 +859,6 @@ const Product = () => {
               {!suspensionInfo.isSuspended ? (
                 <>
                   <Button 
-                    variant="info" 
-                    className="me-2"
-                    onClick={() => setShowImageUploader(true)}
-                  >
-                    <FaUpload /> Upload Images
-                  </Button>
-                  <Button 
                     variant="success" 
                     className="me-2"
                     onClick={() => setShowBulkUpload(true)}
@@ -833,7 +887,7 @@ const Product = () => {
             </Alert>
           )}
 
-          {/* TABLE WITH IMAGE COLUMN */}
+          {/* TABLE WITH SHIPPING COLUMN */}
           <Table responsive bordered hover className={suspensionInfo.isSuspended ? 'opacity-50' : ''}>
             <thead>
               <tr>
@@ -843,6 +897,7 @@ const Product = () => {
                 <th>Price (₹)</th>
                 <th>Size/Weight</th>
                 <th>Stock</th>
+                <th>Shipping</th>
                 <th>Status</th>
                 <th>Actions</th>
               </tr>
@@ -850,7 +905,7 @@ const Product = () => {
             <tbody>
               {products.length === 0 ? (
                 <tr>
-                  <td colSpan="8" className="text-center">
+                  <td colSpan="9" className="text-center">
                     {suspensionInfo.isSuspended ? 'Products are hidden while account is suspended' : 'No products found'}
                   </td>
                 </tr>
@@ -929,6 +984,12 @@ const Product = () => {
                         <Badge bg={stockBadgeColor}>
                           {stockLabel}
                         </Badge>
+                      </td>
+                      <td>
+                        <div className="small">
+                          <FaTruck className="me-1 text-muted" />
+                          {getShippingDisplay(item)}
+                        </div>
                       </td>
                       <td>
                         <Badge bg={item.isActive !== false ? 'success' : 'secondary'}>
@@ -1232,6 +1293,124 @@ const Product = () => {
               </Col>
             </Row>
 
+            {/* 🚚 SHIPPING SECTION */}
+            <Form.Label className="fw-bold mt-2">
+              <FaTruck className="me-2" />
+              Shipping Information
+            </Form.Label>
+            <hr className="mt-1 mb-3" />
+
+            <Row>
+              <Col md={6}>
+                <Form.Group className="mb-3">
+                  <Form.Label>Shipping Time *</Form.Label>
+                  <Form.Select
+                    value={newProduct.shippingTime || "3-5 days"}
+                    onChange={(e) =>
+                      setNewProduct({ ...newProduct, shippingTime: e.target.value })
+                    }
+                  >
+                    {shippingOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </Form.Select>
+                </Form.Group>
+              </Col>
+              <Col md={6}>
+                <Form.Group className="mb-3">
+                  <Form.Label>Custom Shipping Time</Form.Label>
+                  <Form.Control
+                    placeholder="e.g., Ships within 1 week"
+                    value={newProduct.customShippingTime || ""}
+                    onChange={(e) =>
+                      setNewProduct({ ...newProduct, customShippingTime: e.target.value })
+                    }
+                    disabled={newProduct.shippingTime !== "Custom"}
+                  />
+                  <small className="text-muted">
+                    {newProduct.shippingTime === "Custom" 
+                      ? "Enter your custom shipping description" 
+                      : "Only used when 'Custom' is selected above"}
+                  </small>
+                </Form.Group>
+              </Col>
+            </Row>
+
+            <Row>
+              <Col md={4}>
+                <Form.Group className="mb-3">
+                  <Form.Label>Min Delivery Days</Form.Label>
+                  <Form.Control
+                    type="number"
+                    min="1"
+                    value={newProduct.estimatedDeliveryDays?.min || 3}
+                    onChange={(e) =>
+                      setNewProduct({
+                        ...newProduct,
+                        estimatedDeliveryDays: {
+                          ...newProduct.estimatedDeliveryDays,
+                          min: parseInt(e.target.value) || 1
+                        }
+                      })
+                    }
+                  />
+                </Form.Group>
+              </Col>
+              <Col md={4}>
+                <Form.Group className="mb-3">
+                  <Form.Label>Max Delivery Days</Form.Label>
+                  <Form.Control
+                    type="number"
+                    min="1"
+                    value={newProduct.estimatedDeliveryDays?.max || 5}
+                    onChange={(e) =>
+                      setNewProduct({
+                        ...newProduct,
+                        estimatedDeliveryDays: {
+                          ...newProduct.estimatedDeliveryDays,
+                          max: parseInt(e.target.value) || 1
+                        }
+                      })
+                    }
+                  />
+                </Form.Group>
+              </Col>
+              <Col md={4}>
+                <Form.Group className="mb-3">
+                  <Form.Label>Shipping Charge (₹)</Form.Label>
+                  <Form.Control
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    value={newProduct.shippingCharge || 0}
+                    onChange={(e) =>
+                      setNewProduct({ 
+                        ...newProduct, 
+                        shippingCharge: parseFloat(e.target.value) || 0 
+                      })
+                    }
+                  />
+                  <small className="text-muted">0 = Free Shipping</small>
+                </Form.Group>
+              </Col>
+            </Row>
+
+            <Form.Group className="mb-3">
+              <Form.Check
+                type="checkbox"
+                label="Free Shipping"
+                checked={newProduct.isFreeShipping !== undefined ? newProduct.isFreeShipping : true}
+                onChange={(e) =>
+                  setNewProduct({ 
+                    ...newProduct, 
+                    isFreeShipping: e.target.checked 
+                  })
+                }
+              />
+            </Form.Group>
+
             <Form.Group className="mb-3">
               <Form.Label>Description</Form.Label>
               <Form.Control
@@ -1516,6 +1695,124 @@ const Product = () => {
                 </Col>
               </Row>
 
+              {/* 🚚 SHIPPING SECTION - EDIT */}
+              <Form.Label className="fw-bold mt-2">
+                <FaTruck className="me-2" />
+                Shipping Information
+              </Form.Label>
+              <hr className="mt-1 mb-3" />
+
+              <Row>
+                <Col md={6}>
+                  <Form.Group className="mb-3">
+                    <Form.Label>Shipping Time *</Form.Label>
+                    <Form.Select
+                      value={editData.shippingTime || "3-5 days"}
+                      onChange={(e) =>
+                        setEditData({ ...editData, shippingTime: e.target.value })
+                      }
+                    >
+                      {shippingOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </Form.Select>
+                  </Form.Group>
+                </Col>
+                <Col md={6}>
+                  <Form.Group className="mb-3">
+                    <Form.Label>Custom Shipping Time</Form.Label>
+                    <Form.Control
+                      placeholder="e.g., Ships within 1 week"
+                      value={editData.customShippingTime || ""}
+                      onChange={(e) =>
+                        setEditData({ ...editData, customShippingTime: e.target.value })
+                      }
+                      disabled={editData.shippingTime !== "Custom"}
+                    />
+                    <small className="text-muted">
+                      {editData.shippingTime === "Custom" 
+                        ? "Enter your custom shipping description" 
+                        : "Only used when 'Custom' is selected above"}
+                    </small>
+                  </Form.Group>
+                </Col>
+              </Row>
+
+              <Row>
+                <Col md={4}>
+                  <Form.Group className="mb-3">
+                    <Form.Label>Min Delivery Days</Form.Label>
+                    <Form.Control
+                      type="number"
+                      min="1"
+                      value={editData.estimatedDeliveryDays?.min || 3}
+                      onChange={(e) =>
+                        setEditData({
+                          ...editData,
+                          estimatedDeliveryDays: {
+                            ...editData.estimatedDeliveryDays,
+                            min: parseInt(e.target.value) || 1
+                          }
+                        })
+                      }
+                    />
+                  </Form.Group>
+                </Col>
+                <Col md={4}>
+                  <Form.Group className="mb-3">
+                    <Form.Label>Max Delivery Days</Form.Label>
+                    <Form.Control
+                      type="number"
+                      min="1"
+                      value={editData.estimatedDeliveryDays?.max || 5}
+                      onChange={(e) =>
+                        setEditData({
+                          ...editData,
+                          estimatedDeliveryDays: {
+                            ...editData.estimatedDeliveryDays,
+                            max: parseInt(e.target.value) || 1
+                          }
+                        })
+                      }
+                    />
+                  </Form.Group>
+                </Col>
+                <Col md={4}>
+                  <Form.Group className="mb-3">
+                    <Form.Label>Shipping Charge (₹)</Form.Label>
+                    <Form.Control
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      value={editData.shippingCharge || 0}
+                      onChange={(e) =>
+                        setEditData({ 
+                          ...editData, 
+                          shippingCharge: parseFloat(e.target.value) || 0 
+                        })
+                      }
+                    />
+                    <small className="text-muted">0 = Free Shipping</small>
+                  </Form.Group>
+                </Col>
+              </Row>
+
+              <Form.Group className="mb-3">
+                <Form.Check
+                  type="checkbox"
+                  label="Free Shipping"
+                  checked={editData.isFreeShipping !== undefined ? editData.isFreeShipping : true}
+                  onChange={(e) =>
+                    setEditData({ 
+                      ...editData, 
+                      isFreeShipping: e.target.checked 
+                    })
+                  }
+                />
+              </Form.Group>
+
               <Form.Group className="mb-3">
                 <Form.Label>Description</Form.Label>
                 <Form.Control
@@ -1662,118 +1959,294 @@ const Product = () => {
         </Modal.Footer>
       </Modal>
 
-      {/* ================= BULK UPLOAD MODAL ================= */}
-      <Modal show={showBulkUpload} onHide={() => {
-        setShowBulkUpload(false);
-        setExcelFile(null);
-        setUploadResult(null);
-        setBulkImages([]);
-      }} centered size="lg">
+      {/* ================= ENHANCED BULK UPLOAD MODAL (AMAZON STYLE) ================= */}
+      <Modal 
+        show={showBulkUpload} 
+        onHide={() => {
+          setShowBulkUpload(false);
+          resetBulkUpload();
+        }} 
+        centered 
+        size="lg"
+      >
         <Modal.Header closeButton>
-          <Modal.Title>Bulk Upload Products via Excel</Modal.Title>
+          <Modal.Title>
+            <FaFileExcel className="me-2" />
+            Bulk Upload Products
+            <Badge bg="info" className="ms-2">Amazon-Style</Badge>
+          </Modal.Title>
         </Modal.Header>
 
         <Modal.Body>
-          <div className="mb-3">
-            <Button variant="info" onClick={downloadTemplate} className="mb-3">
-              📥 Download Excel Template
-            </Button>
-            <p className="text-muted small">
-              Download the template, fill in your product details, and upload the file here.
-              <br />
-              <strong>📸 Image Upload Options:</strong>
-              <br />
-              1. <strong>In Excel:</strong> Specify image paths (e.g., /uploads/product1.jpg)
-              <br />
-              2. <strong>Upload Images:</strong> Select image files below to upload with your products
-              <br />
-              <span className="text-warning">⚠️ If you specify image paths in Excel, the image files must already exist in the uploads folder.</span>
-            </p>
-          </div>
-
-          <Form.Group className="mb-3">
-            <Form.Label>📊 Select Excel File (.xlsx, .xls) *</Form.Label>
-            <Form.Control
-              type="file"
-              accept=".xlsx,.xls"
-              onChange={(e) => setExcelFile(e.target.files[0])}
-              disabled={uploadProgress}
-              required
-            />
-            {excelFile && (
-              <small className="text-success">
-                ✅ Selected: {excelFile.name}
-              </small>
-            )}
-          </Form.Group>
-
-          <Form.Group className="mb-3">
-            <Form.Label>🖼️ Upload Product Images (Optional)</Form.Label>
-            <Form.Control
-              type="file"
-              multiple
-              accept="image/*"
-              onChange={(e) => {
-                const files = Array.from(e.target.files);
-                setBulkImages(files);
-              }}
-              disabled={uploadProgress}
-            />
-            {bulkImages.length > 0 && (
-              <small className="text-success">
-                ✅ {bulkImages.length} image(s) selected
-              </small>
-            )}
-            <div className="mt-2">
-              <small className="text-muted">
-                • Images will be automatically assigned to products in order
-                <br />
-                • If you specify image paths in Excel, those will be used instead
-                <br />
-                • Supported formats: JPG, PNG, GIF, WebP
-              </small>
-            </div>
-          </Form.Group>
-
-          {bulkImages.length > 0 && (
-            <div className="mt-3">
-              <h6>Selected Images Preview:</h6>
-              <div className="d-flex flex-wrap gap-2">
-                {bulkImages.slice(0, 6).map((file, index) => (
-                  <div key={index} className="border rounded p-1" style={{ width: '80px' }}>
-                    <img
-                      src={URL.createObjectURL(file)}
-                      alt={`Preview ${index + 1}`}
-                      style={{ width: '100%', height: '80px', objectFit: 'cover' }}
-                    />
-                    <small className="text-muted d-block text-truncate" style={{ fontSize: '10px' }}>
-                      {file.name}
-                    </small>
-                  </div>
-                ))}
-                {bulkImages.length > 6 && (
-                  <div className="d-flex align-items-center justify-content-center border rounded" style={{ width: '80px', height: '80px' }}>
-                    <small>+{bulkImages.length - 6} more</small>
-                  </div>
-                )}
+          {/* Step 1: Upload File */}
+          {uploadStep === 1 && (
+            <>
+              <div className="mb-4 p-3 bg-light rounded">
+                <h6>📋 How to Bulk Upload</h6>
+                <ol className="small mb-0">
+                  <li>Download the Excel template below</li>
+                  <li>Fill in your product details (Name, Price, Category are required)</li>
+                  <li>Upload the filled Excel file</li>
+                  <li>Review the validation preview</li>
+                  <li>Confirm and process the upload</li>
+                </ol>
               </div>
+
+              <div className="mb-3">
+                <Button variant="info" onClick={downloadTemplate} className="mb-3">
+                  <FaDownload className="me-2" />
+                  Download Excel Template
+                </Button>
+                <p className="text-muted small">
+                  <strong>📸 Image Options:</strong>
+                  <br />
+                  • Add image filenames in the Images column (e.g., product1.jpg, product2.jpg)
+                  <br />
+                  • Upload the actual image files below (they'll be auto-assigned)
+                  <br />
+                  <strong>🚚 Shipping Columns:</strong>
+                  <br />
+                  • Shipping Time, Custom Shipping Time, Min/Max Delivery Days
+                  <br />
+                  • Shipping Charge, Free Shipping (yes/no)
+                </p>
+              </div>
+
+              <Form.Group className="mb-3">
+                <Form.Label>📊 Select Excel File (.xlsx, .xls) *</Form.Label>
+                <Form.Control
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={(e) => setExcelFile(e.target.files[0])}
+                  disabled={uploadProgress}
+                  required
+                />
+                {excelFile && (
+                  <small className="text-success">
+                    ✅ Selected: {excelFile.name} ({(excelFile.size / 1024).toFixed(1)} KB)
+                  </small>
+                )}
+              </Form.Group>
+
+              <Form.Group className="mb-3">
+                <Form.Label>🖼️ Upload Product Images (Optional)</Form.Label>
+                <Form.Control
+                  type="file"
+                  multiple
+                  accept="image/*"
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files);
+                    setBulkImages(files);
+                  }}
+                  disabled={uploadProgress}
+                />
+                {bulkImages.length > 0 && (
+                  <small className="text-success">
+                    ✅ {bulkImages.length} image(s) selected
+                  </small>
+                )}
+                <div className="mt-2">
+                  <small className="text-muted">
+                    • Images will be automatically assigned to products in order
+                    <br />
+                    • If you specify filenames in Excel, they'll be matched with uploaded files
+                    <br />
+                    • Supported formats: JPG, PNG, GIF, WebP (Max 5MB each)
+                  </small>
+                </div>
+              </Form.Group>
+
+              {bulkImages.length > 0 && (
+                <div className="mt-3">
+                  <h6>Selected Images Preview:</h6>
+                  <div className="d-flex flex-wrap gap-2">
+                    {bulkImages.slice(0, 6).map((file, index) => (
+                      <div key={index} className="border rounded p-1" style={{ width: '80px' }}>
+                        <img
+                          src={URL.createObjectURL(file)}
+                          alt={`Preview ${index + 1}`}
+                          style={{ width: '100%', height: '80px', objectFit: 'cover' }}
+                        />
+                        <small className="text-muted d-block text-truncate" style={{ fontSize: '10px' }}>
+                          {file.name}
+                        </small>
+                      </div>
+                    ))}
+                    {bulkImages.length > 6 && (
+                      <div className="d-flex align-items-center justify-content-center border rounded" style={{ width: '80px', height: '80px' }}>
+                        <small>+{bulkImages.length - 6} more</small>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Step 2: Preview & Validation */}
+          {uploadStep === 2 && validationData && (
+            <>
+              <div className="mb-4">
+                <h6>📊 Validation Summary</h6>
+                <Row className="g-2">
+                  <Col xs={6} md={3}>
+                    <Card className="bg-primary text-white text-center">
+                      <Card.Body className="py-2">
+                        <h6 className="mb-0">{validationData.summary.total}</h6>
+                        <small>Total Rows</small>
+                      </Card.Body>
+                    </Card>
+                  </Col>
+                  <Col xs={6} md={3}>
+                    <Card className="bg-success text-white text-center">
+                      <Card.Body className="py-2">
+                        <h6 className="mb-0">{validationData.summary.valid}</h6>
+                        <small>Valid</small>
+                      </Card.Body>
+                    </Card>
+                  </Col>
+                  <Col xs={6} md={3}>
+                    <Card className="bg-danger text-white text-center">
+                      <Card.Body className="py-2">
+                        <h6 className="mb-0">{validationData.summary.invalid}</h6>
+                        <small>Invalid</small>
+                      </Card.Body>
+                    </Card>
+                  </Col>
+                  <Col xs={6} md={3}>
+                    <Card className="bg-warning text-dark text-center">
+                      <Card.Body className="py-2">
+                        <h6 className="mb-0">{validationData.summary.warning}</h6>
+                        <small>Warnings</small>
+                      </Card.Body>
+                    </Card>
+                  </Col>
+                </Row>
+              </div>
+
+              {/* Preview of valid rows */}
+              {validationData.preview && validationData.preview.length > 0 && (
+                <div className="mb-3">
+                  <h6>📋 Preview (First 5 Valid Products)</h6>
+                  <Table bordered size="sm" className="mb-0">
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>Name</th>
+                        <th>Price</th>
+                        <th>Category</th>
+                        <th>Stock</th>
+                        <th>Shipping</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {validationData.preview.map((item, idx) => (
+                        <tr key={idx}>
+                          <td>{idx + 1}</td>
+                          <td>{item.name}</td>
+                          <td>₹{item.price}</td>
+                          <td>{item.category}</td>
+                          <td>{item.stock}</td>
+                          <td>{item.shippingTime || "3-5 days"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </Table>
+                </div>
+              )}
+
+              {/* Errors */}
+              {validationData.errors && validationData.errors.length > 0 && (
+                <Alert variant="danger" className="mt-2">
+                  <Alert.Heading>❌ Validation Errors</Alert.Heading>
+                  <ul className="mb-0 small">
+                    {validationData.errors.slice(0, 10).map((err, idx) => (
+                      <li key={idx}>{err}</li>
+                    ))}
+                    {validationData.errors.length > 10 && (
+                      <li>...and {validationData.errors.length - 10} more errors</li>
+                    )}
+                  </ul>
+                </Alert>
+              )}
+
+              {/* Warnings */}
+              {validationData.warnings && validationData.warnings.length > 0 && (
+                <Alert variant="warning" className="mt-2">
+                  <Alert.Heading>⚠️ Warnings</Alert.Heading>
+                  <ul className="mb-0 small">
+                    {validationData.warnings.slice(0, 5).map((warn, idx) => (
+                      <li key={idx}>
+                        Row {warn.rowNumber}: {warn.warnings.join(', ')}
+                      </li>
+                    ))}
+                    {validationData.warnings.length > 5 && (
+                      <li>...and {validationData.warnings.length - 5} more warnings</li>
+                    )}
+                  </ul>
+                </Alert>
+              )}
+
+              {validationData.summary.invalid > 0 && (
+                <Alert variant="danger">
+                  <strong>⚠️ {validationData.summary.invalid} rows have errors.</strong> These rows will be skipped during upload.
+                </Alert>
+              )}
+
+              {validationData.summary.valid === 0 && (
+                <Alert variant="danger">
+                  <strong>❌ No valid rows found.</strong> Please fix the errors and try again.
+                </Alert>
+              )}
+            </>
+          )}
+
+          {/* Processing Progress */}
+          {uploadProgress && (
+            <div className="mt-3">
+              <div className="d-flex justify-content-between mb-1">
+                <span>Processing...</span>
+                <span>{processingProgress}%</span>
+              </div>
+              <div className="progress" style={{ height: '20px' }}>
+                <div 
+                  className="progress-bar progress-bar-striped progress-bar-animated"
+                  style={{ width: `${processingProgress}%` }}
+                >
+                  {processingProgress}%
+                </div>
+              </div>
+              <p className="text-muted small mt-2">
+                {processingProgress < 30 ? '📊 Validating product data...' : 
+                 processingProgress < 60 ? '📸 Processing images...' : 
+                 processingProgress < 90 ? '💾 Saving products...' : 
+                 '✅ Finalizing upload...'}
+              </p>
             </div>
           )}
 
+          {/* Upload Results */}
           {uploadResult && (
             <div className={`mt-3 p-3 rounded ${uploadResult.errors ? 'bg-warning' : 'bg-success'} bg-opacity-10`}>
-              <h6>Upload Summary:</h6>
-              <p className="mb-1">📊 Total rows processed: {uploadResult.totalRows}</p>
-              <p className="mb-1">✅ Successfully uploaded: {uploadResult.successfulRows}</p>
-              <p className="mb-1">🖼️ Images uploaded: {uploadResult.imagesUploaded || 0}</p>
-              <p className="mb-1">📸 Products with images: {uploadResult.imagesAssigned || 0}</p>
-              <p className="mb-1">❌ Failed rows: {uploadResult.failedRows}</p>
+              <h6>✅ Upload Complete!</h6>
+              <div className="row">
+                <div className="col-6">
+                  <p className="mb-1">📊 Total rows: {uploadResult.summary.total}</p>
+                  <p className="mb-1">✅ Successful: {uploadResult.summary.successful}</p>
+                  <p className="mb-1">❌ Failed: {uploadResult.summary.failed}</p>
+                </div>
+                <div className="col-6">
+                  <p className="mb-1">📸 Images uploaded: {uploadResult.images?.uploaded || 0}</p>
+                  <p className="mb-1">🖼️ Images assigned: {uploadResult.images?.assigned || 0}</p>
+                  <p className="mb-1">📈 Success rate: {uploadResult.summary.successRate}</p>
+                </div>
+              </div>
               {uploadResult.errors && uploadResult.errors.length > 0 && (
                 <div className="mt-2">
-                  <p className="mb-1 fw-bold">Errors:</p>
-                  <ul className="small">
+                  <p className="mb-1 fw-bold text-danger">Errors:</p>
+                  <ul className="small mb-0">
                     {uploadResult.errors.slice(0, 5).map((err, idx) => (
-                      <li key={idx}>{err}</li>
+                      <li key={idx} className="text-danger">{err}</li>
                     ))}
                     {uploadResult.errors.length > 5 && (
                       <li>...and {uploadResult.errors.length - 5} more errors</li>
@@ -1781,189 +2254,86 @@ const Product = () => {
                   </ul>
                 </div>
               )}
+              {uploadResult.products && uploadResult.products.length > 0 && (
+                <div className="mt-2">
+                  <p className="mb-1 fw-bold text-success">Uploaded Products:</p>
+                  <div className="d-flex flex-wrap gap-1">
+                    {uploadResult.products.slice(0, 5).map((p, idx) => (
+                      <Badge key={idx} bg="success" className="me-1">
+                        {p.name} (₹{p.price}) {p.shippingTime && `• ${p.shippingTime}`}
+                      </Badge>
+                    ))}
+                    {uploadResult.products.length > 5 && (
+                      <Badge bg="secondary">+{uploadResult.products.length - 5} more</Badge>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
+          )}
+        </Modal.Body>
+
+        <Modal.Footer>
+          {uploadStep === 1 && !uploadResult && (
+            <>
+              <Button 
+                variant="secondary" 
+                onClick={() => {
+                  setShowBulkUpload(false);
+                  resetBulkUpload();
+                }}
+                disabled={uploadProgress}
+              >
+                Cancel
+              </Button>
+              <Button 
+                variant="primary" 
+                onClick={handleValidateExcel}
+                disabled={!excelFile || uploadProgress}
+              >
+                {uploadProgress ? "Validating..." : "Validate & Preview"}
+              </Button>
+            </>
+          )}
+          
+          {uploadStep === 2 && !uploadResult && !uploadProgress && (
+            <>
+              <Button 
+                variant="secondary" 
+                onClick={() => {
+                  setUploadStep(1);
+                  setValidationData(null);
+                }}
+                disabled={uploadProgress}
+              >
+                <FaArrowLeft className="me-1" /> Back
+              </Button>
+              <Button 
+                variant="success" 
+                onClick={handleProcessBulkUpload}
+                disabled={validationData.summary.valid === 0 || uploadProgress}
+              >
+                {uploadProgress ? "Processing..." : `Upload ${validationData.summary.valid} Products`}
+                <FaArrowRight className="ms-1" />
+              </Button>
+            </>
           )}
 
           {uploadProgress && (
-            <div className="text-center mt-3">
-              <Spinner animation="border" size="sm" /> Uploading products and images...
-            </div>
-          )}
-        </Modal.Body>
-
-        <Modal.Footer>
-          <Button 
-            variant="secondary" 
-            onClick={() => {
-              setShowBulkUpload(false);
-              setExcelFile(null);
-              setUploadResult(null);
-              setBulkImages([]);
-            }}
-            disabled={uploadProgress}
-          >
-            Cancel
-          </Button>
-          <Button 
-            variant="success" 
-            onClick={handleBulkUpload}
-            disabled={!excelFile || uploadProgress}
-          >
-            {uploadProgress ? "Uploading..." : "Upload Excel & Images"}
-          </Button>
-        </Modal.Footer>
-      </Modal>
-
-      {/* ================= IMAGE UPLOADER MODAL ================= */}
-      <Modal show={showImageUploader} onHide={() => {
-        setShowImageUploader(false);
-        setSelectedImages([]);
-        setUploadedImageUrls([]);
-      }} centered size="lg">
-        <Modal.Header closeButton>
-          <Modal.Title>
-            <FaUpload className="me-2" />
-            Image Uploader
-          </Modal.Title>
-        </Modal.Header>
-
-        <Modal.Body>
-          {/* Upload Section */}
-          <div className="upload-section mb-4 p-3 border rounded">
-            <h6>Upload New Images</h6>
-            <Form.Group className="mb-3">
-              <Form.Control
-                type="file"
-                multiple
-                accept="image/*"
-                onChange={handleImageSelect}
-                disabled={imageUploadProgress}
-              />
-              <small className="text-muted">
-                Select multiple images (JPG, PNG, GIF, WebP) - Max 5MB each
-              </small>
-            </Form.Group>
-
-            {selectedImages.length > 0 && (
-              <div className="selected-images mb-3">
-                <div className="d-flex flex-wrap gap-2">
-                  {selectedImages.map((file, index) => (
-                    <div key={index} className="position-relative border rounded p-1" style={{ width: '100px' }}>
-                      <img
-                        src={URL.createObjectURL(file)}
-                        alt={`Selected ${index + 1}`}
-                        style={{ width: '100%', height: '80px', objectFit: 'cover' }}
-                      />
-                      <button
-                        className="position-absolute top-0 end-0 btn btn-danger btn-sm rounded-circle"
-                        style={{ width: '20px', height: '20px', padding: '0', fontSize: '10px', transform: 'translate(50%, -50%)' }}
-                        onClick={() => removeSelectedImage(index)}
-                        disabled={imageUploadProgress}
-                      >
-                        <FaTimes />
-                      </button>
-                      <small className="text-muted d-block text-truncate" style={{ fontSize: '10px' }}>
-                        {file.name}
-                      </small>
-                    </div>
-                  ))}
-                </div>
-                <small className="text-success">
-                  {selectedImages.length} image(s) selected
-                </small>
-              </div>
-            )}
-
-            <Button
-              variant="primary"
-              onClick={handleImageUpload}
-              disabled={selectedImages.length === 0 || imageUploadProgress}
-            >
-              {imageUploadProgress ? (
-                <>
-                  <Spinner animation="border" size="sm" className="me-2" />
-                  Uploading...
-                </>
-              ) : (
-                <>
-                  <FaUpload className="me-2" />
-                  Upload Images
-                </>
-              )}
+            <Button variant="secondary" disabled>
+              <Spinner animation="border" size="sm" className="me-2" />
+              Processing...
             </Button>
-          </div>
+          )}
 
-          {/* Uploaded Images List */}
-          <div className="uploaded-images-section">
-            <div className="d-flex justify-content-between align-items-center mb-3">
-              <h6>Uploaded Images</h6>
-              <Button
-                variant="outline-secondary"
-                size="sm"
-                onClick={fetchImagesList}
-                disabled={loadingImages}
-              >
-                <FaSync className={loadingImages ? "fa-spin" : ""} />
-              </Button>
-            </div>
-
-            {loadingImages ? (
-              <div className="text-center py-3">
-                <Spinner animation="border" size="sm" />
-              </div>
-            ) : imageList.length === 0 ? (
-              <div className="text-center py-4 text-muted">
-                <FaImage size={40} className="mb-2" />
-                <p>No images uploaded yet</p>
-              </div>
-            ) : (
-              <div className="d-flex flex-wrap gap-3">
-                {imageList.map((image, index) => (
-                  <div key={index} className="border rounded p-2" style={{ width: '150px' }}>
-                    <img
-                      src={image.url}
-                      alt={image.filename}
-                      style={{ width: '100%', height: '120px', objectFit: 'cover' }}
-                      onError={(e) => {
-                        e.target.src = '';
-                        e.target.style.display = 'none';
-                      }}
-                    />
-                    <div className="mt-1">
-                      <small className="d-block text-truncate" title={image.filename}>
-                        {image.filename}
-                      </small>
-                      <div className="d-flex justify-content-between align-items-center mt-1">
-                        <small className="text-muted">
-                          {(image.size / 1024).toFixed(1)} KB
-                        </small>
-                        <Button
-                          variant="danger"
-                          size="sm"
-                          onClick={() => handleDeleteImage(image.filename)}
-                        >
-                          <FaTrash size={10} />
-                        </Button>
-                      </div>
-                      <small className="text-muted d-block">
-                        {new Date(image.uploadedAt).toLocaleDateString()}
-                      </small>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </Modal.Body>
-
-        <Modal.Footer>
-          <Button variant="secondary" onClick={() => {
-            setShowImageUploader(false);
-            setSelectedImages([]);
-            setUploadedImageUrls([]);
-          }}>
-            Close
-          </Button>
+          {uploadResult && (
+            <Button variant="primary" onClick={() => {
+              setShowBulkUpload(false);
+              resetBulkUpload();
+            }}>
+              Done
+            </Button>
+          )}
         </Modal.Footer>
       </Modal>
     </>

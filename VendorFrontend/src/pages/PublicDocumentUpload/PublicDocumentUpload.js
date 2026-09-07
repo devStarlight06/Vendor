@@ -46,8 +46,10 @@ import axios from "axios";
 import "./publicDocumentUpload.css";
 
 // ================= API CONFIGURATION WITH CORS FIX =================
-const API_URL = "https://api-vendor.native91.com/api/seller";
-const API_BASE = "https://api-vendor.native91.com";
+// const API_URL = "https://api-vendor.native91.com/api/seller";
+// const API_BASE = "https://api-vendor.native91.com";
+const API_URL = "http://localhost:5177/api/seller";
+const API_BASE = "http://localhost:5177";
 
 // Create axios instance with CORS support
 const axiosInstance = axios.create({

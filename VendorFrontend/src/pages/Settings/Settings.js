@@ -1,5 +1,4 @@
-// Settings.js - COMPLETE WITH SUSPENSION HANDLING
-
+// Settings.js - Logo management with sync and proper URL handling
 import { useState, useEffect } from "react";
 import axios from "axios";
 import {
@@ -15,6 +14,7 @@ import {
   ToggleButtonGroup,
   Modal,
   Badge,
+  Image,
 } from "react-bootstrap";
 import { motion } from "framer-motion";
 import { 
@@ -31,14 +31,22 @@ import {
   FaKey,
   FaEye,
   FaEyeSlash,
-  FaBan
+  FaBan,
+  FaUpload,
+  FaTrash,
+  FaImage,
+  FaSync
 } from "react-icons/fa";
 import { MdSettings, MdNotificationsActive } from "react-icons/md";
 import Header from "../../component/header/header";
 import Sidebar from "../../component/sidebar/sidebar";
 
-const API_URL = process.env.REACT_APP_API_BASE + "/settings";
-const AUTH_API_URL = process.env.REACT_APP_API_BASE + "/vendor";
+// ✅ API URLs
+const API_BASE_URL = process.env.REACT_APP_API_BASE || 'http://localhost:5177';
+// const ADMIN_BASE_URL = 'http://localhost:7001';
+const ADMIN_BASE_URL = 'https://api-admin.native91.com';
+const API_URL = `${API_BASE_URL}/settings`;
+const AUTH_API_URL = `${API_BASE_URL}/vendor`;
 
 const Settings = () => {
   const [settings, setSettings] = useState(null);
@@ -48,12 +56,20 @@ const Settings = () => {
   const [success, setSuccess] = useState("");
   const [hasChanges, setHasChanges] = useState(false);
 
-  // ✅ Suspension state
+  // Suspension state
   const [suspensionInfo, setSuspensionInfo] = useState({
     isSuspended: false,
     reason: '',
     suspendedAt: null
   });
+
+  // Logo state
+  const [logoFile, setLogoFile] = useState(null);
+  const [logoPreview, setLogoPreview] = useState(null);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [logoUrl, setLogoUrl] = useState(null);
+  const [logoLoadError, setLogoLoadError] = useState(false);
+  const [logoSource, setLogoSource] = useState('none'); // 'admin' or 'vendor' or 'none'
 
   // Form state
   const [formData, setFormData] = useState({
@@ -81,6 +97,39 @@ const Settings = () => {
 
   const token = localStorage.getItem("token");
 
+  // ✅ FIXED: IMAGE NORMALIZATION FUNCTION
+  const normalizeImage = (image) => {
+    if (!image) return null;
+
+    // Already full URL
+    if (image.startsWith("http://") || image.startsWith("https://")) {
+      // ✅ If admin image accidentally comes with vendor URL, correct it
+      if (image.includes("/images/company/")) {
+        const pathPart = image.substring(image.indexOf("/images"));
+        return `${ADMIN_BASE_URL}${pathPart}`;
+      }
+      return image;
+    }
+
+    // ✅ Admin logo (starts with /images)
+    if (image.startsWith("/images")) {
+      return `${ADMIN_BASE_URL}${image}`;
+    }
+
+    // ✅ Vendor logo (starts with /uploads)
+    if (image.startsWith("/uploads")) {
+      return `${API_BASE_URL}${image}`;
+    }
+
+    // Filename only
+    if (!image.includes("/") && !image.includes("\\")) {
+      return `${API_BASE_URL}/uploads/logos/${image}`;
+    }
+
+    // Relative path
+    return `${API_BASE_URL}/${image.replace(/^\/+/, "")}`;
+  };
+
   // ================= CHECK VENDOR STATUS =================
   const checkVendorStatus = async () => {
     try {
@@ -100,22 +149,6 @@ const Settings = () => {
       return false;
     } catch (err) {
       console.warn("Status check error:", err.message);
-      
-      // ✅ Fallback: Check localStorage
-      try {
-        const storedVendor = JSON.parse(localStorage.getItem('vendorData') || '{}');
-        if (storedVendor.status === 'suspended') {
-          setSuspensionInfo({
-            isSuspended: true,
-            reason: storedVendor.suspensionReason || 'No reason provided',
-            suspendedAt: storedVendor.suspendedAt
-          });
-          return true;
-        }
-      } catch (localErr) {
-        console.warn("LocalStorage status check error:", localErr.message);
-      }
-      
       return false;
     }
   };
@@ -130,6 +163,23 @@ const Settings = () => {
       
       const data = res.data.settings;
       setSettings(data);
+      
+      // ✅ Use logoPath (NOT logo) for normalization
+      if (data.logoPath) {
+        const normalizedLogo = normalizeImage(data.logoPath);
+        console.log("✅ Logo Source:", data.logoSource);
+        console.log("✅ Logo Path:", data.logoPath);
+        console.log("✅ Logo URL:", normalizedLogo);
+        
+        setLogoUrl(normalizedLogo);
+        setLogoSource(data.logoSource || 'none');
+        setLogoLoadError(false);
+      } else {
+        console.log('ℹ️ No logo found');
+        setLogoUrl(null);
+        setLogoSource('none');
+        setLogoLoadError(false);
+      }
       
       const form = {
         emailNotifications: data.emailNotifications ?? true,
@@ -176,10 +226,19 @@ const Settings = () => {
     }
   }, [formData, originalData]);
 
+  // ================= CLEANUP LOGO PREVIEW =================
+  useEffect(() => {
+    return () => {
+      if (logoPreview) {
+        URL.revokeObjectURL(logoPreview);
+      }
+    };
+  }, [logoPreview]);
+
   // Clear messages
   useEffect(() => {
     if (success) {
-      const timer = setTimeout(() => setSuccess(""), 3000);
+      const timer = setTimeout(() => setSuccess(""), 5000);
       return () => clearTimeout(timer);
     }
   }, [success]);
@@ -248,6 +307,131 @@ const Settings = () => {
       ...prev,
       [name]: value
     }));
+  };
+
+  // ================= LOGO HANDLERS =================
+  const handleLogoSelect = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // Validate file size (5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      setError("Logo file size must be less than 5MB");
+      return;
+    }
+
+    // Validate file type
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'];
+    if (!allowedTypes.includes(file.type)) {
+      setError("Only JPEG, PNG, GIF, WebP, and SVG files are allowed");
+      return;
+    }
+
+    setLogoFile(file);
+    setLogoPreview(URL.createObjectURL(file));
+    setError("");
+    setLogoLoadError(false);
+  };
+
+  const handleUploadLogo = async () => {
+    if (!logoFile) {
+      setError("Please select a logo file first");
+      return;
+    }
+
+    if (suspensionInfo.isSuspended) {
+      setError("Cannot upload logo while account is suspended.");
+      return;
+    }
+
+    try {
+      setUploadingLogo(true);
+      setError("");
+
+      const formData = new FormData();
+      formData.append('logo', logoFile);
+
+      const res = await axios.post(`${API_URL}/logo`, formData, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+
+      if (res.data.success) {
+        // Use the full URL from response
+        const fullLogoUrl = res.data.logoUrl || `${API_BASE_URL}${res.data.logoPath}`;
+        setLogoUrl(fullLogoUrl);
+        setLogoSource('vendor');
+        setLogoFile(null);
+        setLogoPreview(null);
+        setLogoLoadError(false);
+        setSuccess("✅ Vendor logo uploaded successfully!");
+        
+        // Refresh settings to get updated data
+        await fetchSettings();
+      }
+    } catch (err) {
+      console.error("Logo upload error:", err);
+      setError(err.response?.data?.message || "Failed to upload logo");
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
+  const handleDeleteLogo = async () => {
+    if (!logoUrl) {
+      setError("No logo to delete");
+      return;
+    }
+
+    if (suspensionInfo.isSuspended) {
+      setError("Cannot delete logo while account is suspended.");
+      return;
+    }
+
+    // ✅ Only allow deleting vendor logo
+    if (logoSource === 'admin') {
+      setError("Admin logo cannot be deleted from here. Please contact Admin.");
+      return;
+    }
+
+    if (!window.confirm("Are you sure you want to delete your vendor logo?")) {
+      return;
+    }
+
+    try {
+      setUploadingLogo(true);
+      setError("");
+
+      const res = await axios.delete(`${API_URL}/logo`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (res.data.success) {
+        setLogoUrl(null);
+        setLogoFile(null);
+        setLogoPreview(null);
+        setLogoLoadError(false);
+        setLogoSource('none');
+        setSuccess("✅ Vendor logo deleted successfully!");
+        
+        // Refresh settings
+        await fetchSettings();
+      }
+    } catch (err) {
+      console.error("Logo delete error:", err);
+      setError(err.response?.data?.message || "Failed to delete logo");
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
+  const cancelLogoUpload = () => {
+    setLogoFile(null);
+    setLogoPreview(null);
+    setError("");
+    setLogoLoadError(false);
   };
 
   // ================= CHANGE PASSWORD =================
@@ -445,26 +629,212 @@ const Settings = () => {
             </div>
           </motion.div>
 
-          {/* Suspended Message */}
-          {suspensionInfo.isSuspended && (
-            <Alert variant="secondary" className="text-center py-4 mb-4">
-              <FaBan style={{ fontSize: '36px', color: '#6c757d' }} />
-              <h5 className="mt-2">Settings Restricted</h5>
-              <p>Your account has been suspended. You cannot change settings.</p>
-              <small>Please contact admin to resolve this issue.</small>
-            </Alert>
-          )}
-
           {/* SETTINGS CARDS */}
           <Row>
-            {/* Company Info Card */}
+            {/* Company Info Card - With Logo */}
             <Col lg={4} className="mb-4">
               <Card className={`h-100 ${suspensionInfo.isSuspended ? 'opacity-50' : ''}`}>
-                <Card.Header className="bg-success text-white">
-                  <FaBuilding className="me-2" />
-                  Company Information
+                <Card.Header className="bg-success text-white d-flex justify-content-between align-items-center">
+                  <span>
+                    <FaBuilding className="me-2" />
+                    Company Information
+                  </span>
+                  {logoUrl && !logoLoadError && (
+                    <Badge bg="light" text="dark" className="d-flex align-items-center gap-1">
+                      <FaCheckCircle className="text-success" /> 
+                      {logoSource === 'admin' ? 'Admin Logo' : 'Vendor Logo'}
+                    </Badge>
+                  )}
                 </Card.Header>
                 <Card.Body>
+                  {/* Logo Section */}
+                  <div className="text-center mb-3">
+                    <div className="position-relative d-inline-block">
+                      {logoPreview ? (
+                        <Image 
+                          src={logoPreview} 
+                          alt="Logo Preview" 
+                          fluid 
+                          style={{ 
+                            maxHeight: '120px', 
+                            maxWidth: '200px',
+                            objectFit: 'contain',
+                            border: '2px solid #28a745',
+                            borderRadius: '8px',
+                            padding: '4px'
+                          }}
+                        />
+                      ) : logoUrl && !logoLoadError ? (
+                        <img
+                          src={logoUrl}
+                          alt="Company Logo"
+                          style={{ 
+                            maxHeight: '120px', 
+                            maxWidth: '200px',
+                            objectFit: 'contain',
+                            border: '2px solid #28a745',
+                            borderRadius: '8px',
+                            padding: '4px',
+                            background: 'white'
+                          }}
+                          onError={(e) => {
+                            console.error('❌ Logo failed to load:', logoUrl);
+                            setLogoLoadError(true);
+                            e.target.style.display = 'none';
+                            // Show fallback
+                            const parent = e.target.parentElement;
+                            const fallbackDiv = document.createElement('div');
+                            fallbackDiv.style.cssText = `
+                              width: 200px;
+                              height: 120px;
+                              display: flex;
+                              align-items: center;
+                              justify-content: center;
+                              background: #f8f9fa;
+                              border: 2px dashed #dee2e6;
+                              border-radius: 8px;
+                              flex-direction: column;
+                              color: #6c757d;
+                            `;
+                            fallbackDiv.innerHTML = `
+                              <span style="font-size: 32px;">📷</span>
+                              <small style="margin-top: 8px;">Logo not found</small>
+                              <small style="font-size: 10px; color: #dc3545; margin-top: 4px;">${logoUrl}</small>
+                              <small style="font-size: 10px; color: #6c757d;">Source: ${logoSource}</small>
+                            `;
+                            parent.appendChild(fallbackDiv);
+                          }}
+                        />
+                      ) : logoUrl && logoLoadError ? (
+                        <div 
+                          className="d-flex align-items-center justify-content-center bg-light"
+                          style={{ 
+                            width: '200px', 
+                            height: '120px',
+                            border: '2px dashed #dc3545',
+                            borderRadius: '8px',
+                            margin: '0 auto'
+                          }}
+                        >
+                          <div className="text-center">
+                            <FaImage size={40} className="text-danger" />
+                            <p className="text-danger small mt-1">Logo failed to load</p>
+                            <small className="text-muted" style={{ fontSize: '10px' }}>
+                              Source: {logoSource}
+                            </small>
+                          </div>
+                        </div>
+                      ) : (
+                        <div 
+                          className="d-flex align-items-center justify-content-center bg-light"
+                          style={{ 
+                            width: '200px', 
+                            height: '120px',
+                            border: '2px dashed #dee2e6',
+                            borderRadius: '8px',
+                            margin: '0 auto'
+                          }}
+                        >
+                          <div className="text-center">
+                            <FaImage size={40} className="text-muted" />
+                            <p className="text-muted small mt-1">No Logo</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Logo Action Buttons */}
+                    {!suspensionInfo.isSuspended && (
+                      <div className="mt-2 d-flex justify-content-center gap-2 flex-wrap">
+                        {logoPreview ? (
+                          <>
+                            <Button 
+                              size="sm" 
+                              variant="success" 
+                              onClick={handleUploadLogo}
+                              disabled={uploadingLogo}
+                            >
+                              {uploadingLogo ? (
+                                <Spinner animation="border" size="sm" />
+                              ) : (
+                                <FaUpload className="me-1" />
+                              )}
+                              Upload Vendor Logo
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant="secondary" 
+                              onClick={cancelLogoUpload}
+                              disabled={uploadingLogo}
+                            >
+                              Cancel
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            <label htmlFor="logo-upload" className="mb-0">
+                              <input
+                                id="logo-upload"
+                                type="file"
+                                accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml"
+                                onChange={handleLogoSelect}
+                                className="d-none"
+                                disabled={suspensionInfo.isSuspended || uploadingLogo}
+                              />
+                              <Button 
+                                size="sm" 
+                                variant="outline-primary" 
+                                as="span"
+                                disabled={suspensionInfo.isSuspended || uploadingLogo}
+                              >
+                                <FaUpload className="me-1" />
+                                Upload Vendor Logo
+                              </Button>
+                            </label>
+                            {logoUrl && logoSource === 'vendor' && (
+                              <Button 
+                                size="sm" 
+                                variant="outline-danger" 
+                                onClick={handleDeleteLogo}
+                                disabled={uploadingLogo}
+                              >
+                                <FaTrash /> Delete
+                              </Button>
+                            )}
+                            {logoUrl && logoSource === 'admin' && (
+                              <Button 
+                                size="sm" 
+                                variant="outline-secondary" 
+                                disabled
+                                title="Admin logo cannot be deleted"
+                              >
+                                <FaTrash /> Admin Logo (Locked)
+                              </Button>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
+                    
+                    {!logoUrl && !logoPreview && !suspensionInfo.isSuspended && (
+                      <small className="text-muted d-block mt-1">
+                        Upload your vendor logo (JPEG, PNG, SVG, max 5MB)
+                      </small>
+                    )}
+                    {logoUrl && !logoLoadError && (
+                      <small className="text-success d-block mt-1">
+                        <FaSync className="me-1" /> 
+                        {logoSource === 'admin' ? 'Admin Logo (Read Only)' : 'Vendor Logo'}
+                      </small>
+                    )}
+                    {logoUrl && logoLoadError && (
+                      <small className="text-danger d-block mt-1">
+                        <FaExclamationTriangle className="me-1" /> 
+                        Logo exists but failed to load. Please re-upload.
+                      </small>
+                    )}
+                  </div>
+
                   <div className="mb-3">
                     <label className="text-muted small fw-bold">Company Name</label>
                     <p className="h5">{settings?.company || "N/A"}</p>
@@ -484,7 +854,9 @@ const Settings = () => {
                   <div className="mt-3 p-2 bg-light rounded">
                     <small className="text-muted">
                       <FaCheckCircle className="text-success me-1" />
-                      Settings are automatically saved to your account
+                      {logoSource === 'admin' 
+                        ? 'Admin logo is managed by Admin. Vendor logo can be uploaded separately.'
+                        : 'Logo will appear in your vendor documents'}
                     </small>
                   </div>
                 </Card.Body>

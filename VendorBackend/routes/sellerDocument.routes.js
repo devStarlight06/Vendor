@@ -1,4 +1,5 @@
-// sellerDocument.routes.js - FULL CORS SUPPORT
+// sellerDocument.routes.js - WITH MULTIPLE CATEGORY SUPPORT
+
 const express = require("express");
 const router = express.Router();
 const multer = require("multer");
@@ -8,6 +9,7 @@ const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
 const SellerDocument = require("../models/SellerDocument");
 const Vendor = require("../models/Vendor");
+const Company = require("../models/Company");
 
 const { 
   sendDocumentLinkEmail,
@@ -20,6 +22,106 @@ const {
 
 const generateTrackingId = () => {
   return 'DOC-' + crypto.randomBytes(6).toString('hex').toUpperCase();
+};
+
+// ============================================================
+// ✅ SEND ADMIN NOTIFICATION EMAIL FOR NEW DOCUMENT
+// ============================================================
+const sendAdminDocumentNotification = async (documentData) => {
+  const adminEmail = process.env.ADMIN_EMAIL || "admin@native91.com";
+  
+  const nodemailer = require("nodemailer");
+  const transporter = nodemailer.createTransport({
+    host: process.env.EMAIL_HOST || "smtp.hostinger.com",
+    port: parseInt(process.env.EMAIL_PORT) || 465,
+    secure: true,
+    auth: {
+      user: process.env.EMAIL_USER || "brands@native91.com",
+      pass: process.env.EMAIL_PASS || "",
+    },
+    tls: {
+      rejectUnauthorized: false,
+    },
+  });
+
+  const mailOptions = {
+    from: `"Native91" <${process.env.EMAIL_USER || "brands@native91.com"}>`,
+    to: adminEmail,
+    subject: `📋 New Document Upload - ${documentData.company}`,
+    html: `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>New Document Upload</title>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; background: #f5f5f2; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; background: #ffffff; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+    .header { background: #073f31; padding: 25px; text-align: center; border-radius: 10px 10px 0 0; }
+    .header h1 { color: #e5d6a5; margin: 0; font-family: Georgia, serif; font-weight: normal; }
+    .content { padding: 25px; }
+    .field { margin-bottom: 12px; }
+    .label { font-weight: bold; color: #073f31; font-size: 13px; }
+    .value { font-size: 15px; color: #333; margin-top: 2px; padding: 8px 12px; background: #f9fafb; border-radius: 5px; }
+    .status-badge { display: inline-block; background: #f39c12; color: white; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; }
+    .footer { text-align: center; padding: 20px; font-size: 12px; color: #999; border-top: 1px solid #eee; }
+    .button { display: inline-block; background: #073f31; color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>✦ Native91</h1>
+      <p style="color: white; margin: 5px 0 0; font-size: 14px;">New Document Upload</p>
+    </div>
+    
+    <div class="content">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h2 style="margin: 0; color: #073f31;">${documentData.company}</h2>
+        <span class="status-badge">DRAFT</span>
+      </div>
+      
+      <div class="field">
+        <div class="label">📧 Email Address</div>
+        <div class="value">${documentData.email}</div>
+      </div>
+      
+      <div class="field">
+        <div class="label">🏷️ Company / Business Name</div>
+        <div class="value">${documentData.company}</div>
+      </div>
+      
+      <div class="field">
+        <div class="label">🆔 Tracking ID</div>
+        <div class="value">${documentData.trackingId}</div>
+      </div>
+      
+      <div class="field">
+        <div class="label">📅 Created At</div>
+        <div class="value">${new Date(documentData.createdAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</div>
+      </div>
+      
+      <hr style="margin: 20px 0; border-color: #eee;">
+      
+      <div style="text-align: center;">
+        <a href="${process.env.ADMIN_URL || 'https://admin.native91.com'}/vendor-documents" class="button">
+          View Documents →
+        </a>
+      </div>
+    </div>
+    
+    <div class="footer">
+      <p>This is an automated notification. Please review the documents in the admin panel.</p>
+      <p>&copy; ${new Date().getFullYear()} Native91. All rights reserved.</p>
+    </div>
+  </div>
+</body>
+</html>
+    `
+  };
+
+  return await transporter.sendMail(mailOptions);
 };
 
 // ============================================================
@@ -84,12 +186,11 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
-// In sellerDocument.routes.js - Find this section
 const upload = multer({
   storage: storage,
   limits: {
-    fileSize: 50 * 1024 * 1024,  // ✅ Change from 10 to 50
-    fieldSize: 50 * 1024 * 1024   // ✅ Change from 10 to 50
+    fileSize: 50 * 1024 * 1024,
+    fieldSize: 50 * 1024 * 1024
   },
   fileFilter: fileFilter
 });
@@ -124,7 +225,7 @@ router.get("/documents/:trackingId", async (req, res) => {
 });
 
 // ============================================================
-// CREATE DOCUMENT
+// CREATE DOCUMENT - WITH ADMIN NOTIFICATION
 // ============================================================
 router.post("/documents/create", async (req, res) => {
   try {
@@ -167,6 +268,10 @@ router.post("/documents/create", async (req, res) => {
       company,
       trackingId,
       status: 'draft',
+      categories: [],
+      category: "",
+      businessName: company,
+      website: "",
       brand: { description: "" },
       logo: { image: "" }
     });
@@ -174,6 +279,13 @@ router.post("/documents/create", async (req, res) => {
     await document.save();
     
     console.log("✅ [CREATE] Document created with tracking ID:", trackingId);
+
+    try {
+      await sendAdminDocumentNotification(document);
+      console.log(`✅ Admin notification email sent for document: ${document.trackingId}`);
+    } catch (adminEmailErr) {
+      console.error("❌ Admin email error:", adminEmailErr);
+    }
     
     res.json({
       success: true,
@@ -189,13 +301,20 @@ router.post("/documents/create", async (req, res) => {
     });
   }
 });
-
 // ============================================================
-// SAVE DOCUMENT
+// SAVE DOCUMENT - WITH BUSINESS NAME FIX
 // ============================================================
 router.post("/documents/save", async (req, res) => {
   try {
-    const { trackingId, ...data } = req.body;
+    const { trackingId, categories, category, businessName, website, ...data } = req.body;
+    
+    console.log("📝 [SAVE] Received data:", { 
+      trackingId, 
+      categories, 
+      category, 
+      businessName, 
+      website 
+    });
     
     if (!trackingId) {
       return res.status(400).json({
@@ -204,8 +323,6 @@ router.post("/documents/save", async (req, res) => {
       });
     }
     
-    console.log("📝 Saving document for tracking ID:", trackingId);
-    
     let document = await SellerDocument.findOne({ trackingId });
     
     if (!document) {
@@ -213,6 +330,24 @@ router.post("/documents/save", async (req, res) => {
         success: false,
         message: "Document not found"
       });
+    }
+    
+    // ✅ Save businessName
+    if (businessName !== undefined && businessName !== null) {
+      document.businessName = businessName.trim();
+      console.log(`✅ Business name saved: "${document.businessName}"`);
+    }
+    
+    // ✅ Save categories
+    if (categories !== undefined && Array.isArray(categories)) {
+      document.categories = categories;
+      document.category = categories.length > 0 ? categories[0] : "";
+      console.log(`✅ Categories saved: ${categories.join(', ')}`);
+    }
+    
+    // ✅ Save website
+    if (website !== undefined) {
+      document.website = website;
     }
     
     // Handle logo
@@ -258,6 +393,12 @@ router.post("/documents/save", async (req, res) => {
     await document.save();
     
     console.log("✅ Document saved successfully");
+    console.log(`📄 Document data:`, {
+      id: document._id,
+      businessName: document.businessName,
+      categories: document.categories,
+      status: document.status
+    });
     
     res.json({
       success: true,
@@ -274,7 +415,7 @@ router.post("/documents/save", async (req, res) => {
 });
 
 // ============================================================
-// ✅ UPLOAD FILE (WITH FULL CORS)
+// UPLOAD FILE (WITH FULL CORS)
 // ============================================================
 router.post("/documents/upload", upload.single("file"), async (req, res) => {
   try {
@@ -350,7 +491,7 @@ router.post("/documents/upload", upload.single("file"), async (req, res) => {
 });
 
 // ============================================================
-// SUBMIT DOCUMENTS
+// SUBMIT DOCUMENTS - WITHOUT BUSINESS NAME VALIDATION
 // ============================================================
 router.post("/documents/submit", async (req, res) => {
   try {
@@ -372,8 +513,42 @@ router.post("/documents/submit", async (req, res) => {
       });
     }
 
+    // ✅ Validate categories
+    if (!document.categories || document.categories.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Please select at least one brand category.",
+        field: "categories"
+      });
+    }
+
+    // ✅ REMOVED: Business name validation
+    // if (!document.businessName || document.businessName.trim().length < 2) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: "Please enter your brand/business name. It must be at least 2 characters.",
+    //     field: "businessName"
+    //   });
+    // }
+
+    // Validate brand description
+    if (!document.brand?.description || document.brand.description.length < 20) {
+      return res.status(400).json({
+        success: false,
+        message: "Brand description must be at least 20 characters long.",
+        field: "brandDescription"
+      });
+    }
+
+    if (document.brand.description.length > 1500) {
+      return res.status(400).json({
+        success: false,
+        message: "Brand description cannot exceed 1500 characters.",
+        field: "brandDescription"
+      });
+    }
+
     const requiredFields = [
-      { field: 'brand.description', label: 'Brand Description' },
       { field: 'aadhaar.number', label: 'Aadhaar Number' },
       { field: 'aadhaar.frontImage', label: 'Aadhaar Front Image' },
       { field: 'aadhaar.backImage', label: 'Aadhaar Back Image' },
@@ -409,16 +584,11 @@ router.post("/documents/submit", async (req, res) => {
       });
     }
     
-    if (document.brand && document.brand.description && document.brand.description.length < 20) {
-      return res.status(400).json({
-        success: false,
-        message: "Brand description must be at least 20 characters long"
-      });
-    }
-    
     document.status = 'submitted';
     document.submissionDate = new Date();
     await document.save();
+    
+    console.log(`✅ Documents submitted for: ${document.email}`);
     
     res.json({
       success: true,
@@ -433,7 +603,6 @@ router.post("/documents/submit", async (req, res) => {
     });
   }
 });
-
 // ============================================================
 // ADMIN - REJECT SPECIFIC DOCUMENT
 // ============================================================
@@ -514,7 +683,7 @@ router.patch("/admin/documents/:documentId/reject-section", async (req, res) => 
 });
 
 // ============================================================
-// ADMIN - VERIFY SPECIFIC DOCUMENT
+// ADMIN - VERIFY SPECIFIC DOCUMENT (WITH MULTIPLE CATEGORIES)
 // ============================================================
 router.patch("/admin/documents/:documentId/verify-section", async (req, res) => {
   try {
@@ -564,6 +733,12 @@ router.patch("/admin/documents/:documentId/verify-section", async (req, res) => 
       document.status = 'verified';
       document.verificationDate = new Date();
       
+      // ✅ Get categories from document
+      const categories = document.categories || [];
+      const primaryCategory = categories.length > 0 ? categories[0] : '';
+      
+      console.log(`✅ Categories for ${document.email}:`, categories);
+      
       const generatePassword = () => {
         const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
         let password = '';
@@ -576,15 +751,18 @@ router.patch("/admin/documents/:documentId/verify-section", async (req, res) => 
       const tempPassword = generatePassword();
       const hashedPassword = await bcrypt.hash(tempPassword, 10);
       
+      // ✅ Create or update Vendor with multiple categories
       let vendor = await Vendor.findOne({ email: document.email });
       
       if (!vendor) {
         vendor = new Vendor({
-          name: document.company || document.email.split('@')[0],
+          name: document.businessName || document.company || document.email.split('@')[0],
           email: document.email,
           password: hashedPassword,
           role: 'vendor',
-          company: document.company || 'N/A',
+          company: document.businessName || document.company || 'N/A',
+          categories: categories, // ✅ Save all categories
+          category: primaryCategory, // ✅ Save primary category
           plan: 'founding',
           status: 'active',
           planUpdatedAt: new Date(),
@@ -600,11 +778,14 @@ router.patch("/admin/documents/:documentId/verify-section", async (req, res) => 
           }]
         });
         await vendor.save();
-        console.log(`✅ New vendor created: ${document.email}`);
+        console.log(`✅ New vendor created: ${document.email} with categories: ${categories.join(', ')}`);
       } else {
+        vendor.categories = categories;
+        vendor.category = primaryCategory;
+        vendor.company = document.businessName || document.company || vendor.company;
+        vendor.name = document.businessName || document.company || vendor.name;
         vendor.password = hashedPassword;
         vendor.status = 'active';
-        vendor.company = document.company || vendor.company;
         vendor.plan = 'founding';
         vendor.commissionRate = 0;
         vendor.planUpdatedAt = new Date();
@@ -621,7 +802,27 @@ router.patch("/admin/documents/:documentId/verify-section", async (req, res) => 
           timestamp: new Date()
         });
         await vendor.save();
-        console.log(`✅ Existing vendor updated: ${document.email}`);
+        console.log(`✅ Existing vendor updated: ${document.email} with categories: ${categories.join(', ')}`);
+      }
+      
+      // ✅ Update or create Company with multiple categories
+      let company = await Company.findOne({ name: document.businessName || document.company });
+      if (company) {
+        company.categories = categories;
+        company.category = primaryCategory;
+        company.description = document.brand?.description || company.description;
+        await company.save();
+        console.log(`✅ Company updated: ${company.name} with categories: ${categories.join(', ')}`);
+      } else {
+        company = new Company({
+          name: document.businessName || document.company,
+          description: document.brand?.description || `${document.businessName} - Premium brand on Native91`,
+          categories: categories,
+          category: primaryCategory,
+          status: 'Active',
+        });
+        await company.save();
+        console.log(`✅ New company created: ${company.name} with categories: ${categories.join(', ')}`);
       }
       
       document.vendorId = vendor._id;
@@ -634,8 +835,8 @@ router.patch("/admin/documents/:documentId/verify-section", async (req, res) => 
       try {
         await sendVendorCreationEmail(
           document.email,
-          document.company || "Vendor",
-          document.company || "N/A",
+          document.businessName || document.company || "Vendor",
+          document.businessName || document.company || "N/A",
           tempPassword,
           vendor.plan || 'founding',
           vendor.commissionRate || 0,
@@ -918,6 +1119,10 @@ router.post("/send-approval-email", async (req, res) => {
           company,
           trackingId: newTrackingId,
           status: 'draft',
+          categories: [],
+          category: "",
+          businessName: company,
+          website: "",
           brand: { description: "" },
           logo: { image: "" }
         });

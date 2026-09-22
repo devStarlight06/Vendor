@@ -58,3 +58,62 @@
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
   }
 }
+/* 🆕 Vendor name dropdown */
+.vendor-name-display {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #073f31;
+  font-weight: 500;
+  font-size: 14px;
+}
+
+#vendor-dropdown {
+  color: #073f31 !important;
+}
+
+#vendor-dropdown:hover {
+  color: #0a5a45 !important;
+}
+
+#vendor-dropdown::after {
+  margin-left: 6px;
+  color: #073f31;
+  vertical-align: middle;
+}
+
+/* 🆕 Dropdown menu */
+#vendor-dropdown + .dropdown-menu {
+  border: 1px solid #e5e5e5;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  border-radius: 8px;
+  min-width: 200px;
+  margin-top: 8px;
+}
+
+/* 🆕 Logout item */
+.logout-dropdown-item {
+  color: #dc3545 !important;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  transition: background 0.2s;
+}
+
+.logout-dropdown-item:hover {
+  background-color: #fff5f5 !important;
+  color: #c82333 !important;
+}
+
+/* 🆕 Login link */
+.nav-link-login {
+  color: #073f31 !important;
+  font-weight: 600;
+  padding: 8px 16px !important;
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+
+.nav-link-login:hover {
+  background-color: #f5f4ef;
+}

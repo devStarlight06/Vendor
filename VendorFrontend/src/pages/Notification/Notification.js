@@ -32,7 +32,7 @@ import Sidebar from "../../component/sidebar/sidebar";
 
 const API_URL = process.env.REACT_APP_API_BASE 
   ? process.env.REACT_APP_API_BASE + "/notifications"
-  : "https://api.brandelvendor.starlighttechlabsindia.com/api/notifications";
+  : "https://https://api-vendor.native91.com/api/notifications";
 
 const Notification = () => {
   const [notifications, setNotifications] = useState([]);

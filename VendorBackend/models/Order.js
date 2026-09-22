@@ -11,10 +11,15 @@ const orderSchema = new mongoose.Schema(
         },
         quantity: { type: Number, required: true },
         price: { type: Number, required: true },
-        name: String, // Fallback name
+        name: String,           // Fallback name
+        company: String,        // 🆕 Vendor company
+        vendorId: {             // 🆕 Vendor ID (for security)
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Vendor",
+          default: null,
+        },
       },
     ],
-    // ADD THIS SECTION:
     shippingAddress: {
       name: String,
       email: String,
@@ -26,10 +31,64 @@ const orderSchema = new mongoose.Schema(
       country: String,
     },
     totalPrice: Number,
+
+    // ============================================================
+    // ✅ ORDER STATUS (expanded enum)
+    // ============================================================
     orderStatus: {
       type: String,
-      enum: ["Pending", "Delivered", "Cancelled"],
+      enum: [
+        "Pending",
+        "Processing",
+        "Shipped",
+        "Out for Delivery",
+        "Delivered",
+        "Cancelled",
+      ],
       default: "Pending",
+    },
+
+    // ============================================================
+    // 🆕 STATUS UPDATE TRACKING
+    // ============================================================
+    statusUpdatedAt: {
+      type: Date,
+      default: null,
+    },
+    statusUpdatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Vendor",
+      default: null,
+    },
+
+    // ============================================================
+    // 🆕 STATUS HISTORY (audit log)
+    // ============================================================
+    statusHistory: [
+      {
+        status: String,
+        updatedBy: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Vendor",
+        },
+        updatedByName: String,
+        timestamp: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
+
+    // ============================================================
+    // 🆕 ORDER META
+    // ============================================================
+    paymentMethod: {
+      type: String,
+      default: "online",
+    },
+    guestId: {
+      type: String,
+      default: null,
     },
   },
   { timestamps: true }

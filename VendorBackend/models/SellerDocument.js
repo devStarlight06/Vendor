@@ -8,7 +8,15 @@ const sellerDocumentSchema = new mongoose.Schema(
       index: true,
       unique: true,
     },
-
+  categories: {
+      type: [String],
+      default: []
+    },
+    // ✅ Keep single category for backward compatibility
+    category: {
+      type: String,
+      default: ""
+    },
     company: {
       type: String,
     },

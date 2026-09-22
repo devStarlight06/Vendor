@@ -1,4 +1,5 @@
-// routes/vendorOrders.js - COMPLETE FIXED VERSION WITH ORDER CREATION
+// routes/vendorOrders.js - COMPLETE WITH STATUS UPDATE
+
 const express = require("express");
 const Order = require("../models/Order");
 const Vendor = require("../models/Vendor");
@@ -6,11 +7,11 @@ const Product = require("../models/Product");
 const auth = require("../middleware/auth");
 
 const router = express.Router();
+
 const checkVendorStatus = async (req, res, next) => {
   const vendor = await Vendor.findById(req.user.id);
   if (!vendor) return res.status(404).json({ message: "Vendor not found" });
-  
-  // ✅ ADD THIS
+
   if (vendor.status === 'suspended') {
     return res.status(403).json({
       success: false,
@@ -18,7 +19,7 @@ const checkVendorStatus = async (req, res, next) => {
       status: 'suspended'
     });
   }
-  
+
   next();
 };
 
@@ -28,7 +29,7 @@ const checkVendorStatus = async (req, res, next) => {
 const getCommissionRate = async (vendorId) => {
   const vendor = await Vendor.findById(vendorId);
   if (!vendor) return 8;
-  
+
   if (vendor.commissionRate !== undefined && vendor.commissionRate !== null) {
     return vendor.commissionRate;
   }
@@ -51,7 +52,19 @@ const getCommissionRate = async (vendorId) => {
 };
 
 // ============================================================
-// ✅ CREATE ORDER - ADD THIS ROUTE (MISSING)
+// ✅ VALID ORDER STATUSES
+// ============================================================
+const VALID_STATUSES = [
+  "Pending",
+  "Processing",
+  "Shipped",
+  "Out for Delivery",
+  "Delivered",
+  "Cancelled",
+];
+
+// ============================================================
+// ✅ CREATE ORDER
 // ============================================================
 router.post("/", auth, async (req, res) => {
   try {
@@ -76,7 +89,6 @@ router.post("/", auth, async (req, res) => {
         });
       }
 
-      // ✅ Get vendor from product
       const vendor = await Vendor.findById(product.vendorId);
 
       processedItems.push({
@@ -86,7 +98,7 @@ router.post("/", auth, async (req, res) => {
         quantity: item.quantity,
         image: product.image && product.image.length > 0 ? product.image[0] : null,
         company: vendor ? vendor.company : product.company || "Unknown",
-        vendorId: vendor ? vendor._id : null, // ✅ CRITICAL: Save vendorId
+        vendorId: vendor ? vendor._id : null,
       });
 
       totalPrice += product.price * item.quantity;
@@ -118,12 +130,12 @@ router.post("/", auth, async (req, res) => {
 });
 
 // ============================================================
-// GET VENDOR ORDERS WITH COMMISSION
+// ✅ GET VENDOR ORDERS WITH COMMISSION
 // ============================================================
 router.get("/my-orders", auth, async (req, res) => {
   try {
     const commissionRate = await getCommissionRate(req.user.id);
-    
+
     const orders = await Order.find()
       .populate({
         path: "items.productId",
@@ -151,7 +163,9 @@ router.get("/my-orders", auth, async (req, res) => {
           _id: order._id,
           shippingAddress: order.shippingAddress,
           orderStatus: order.orderStatus,
+          statusHistory: order.statusHistory || [],
           createdAt: order.createdAt,
+          updatedAt: order.updatedAt,
           items: itemsWithCommission,
           totalPrice: order.totalPrice,
           commissionSummary: {
@@ -175,12 +189,101 @@ router.get("/my-orders", auth, async (req, res) => {
 });
 
 // ============================================================
+// 🆕 ✅ UPDATE ORDER STATUS (Vendor only)
+// PATCH /api/orders/:orderId/status
+// ============================================================
+router.patch("/:orderId/status", auth, async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { status } = req.body;
+
+    // ✅ Validate status
+    if (!status || !VALID_STATUSES.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid status. Must be one of: ${VALID_STATUSES.join(", ")}`,
+      });
+    }
+
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    // ✅ Security: vendor પોતાના order જ update કરી શકે
+    const vendorId = req.user.id.toString();
+    const orderVendorIds = (order.items || [])
+      .map((item) => item.vendorId?.toString())
+      .filter(Boolean);
+
+    // જો vendorId ના મળે, તો company name થી match કરો (backward compatibility)
+    if (!orderVendorIds.includes(vendorId)) {
+      // Fallback: company match
+      const vendor = await Vendor.findById(req.user.id);
+      const hasCompanyMatch = (order.items || []).some(
+        (item) =>
+          item.company &&
+          vendor?.company &&
+          item.company.toLowerCase() === vendor.company.toLowerCase()
+      );
+
+      if (!hasCompanyMatch) {
+        return res.status(403).json({
+          success: false,
+          message: "You are not authorized to update this order",
+        });
+      }
+    }
+
+    // ✅ Update status + metadata
+    order.orderStatus = status;
+    order.statusUpdatedAt = new Date();
+    order.statusUpdatedBy = req.user.id;
+
+    // ✅ Add to status history
+    if (!Array.isArray(order.statusHistory)) {
+      order.statusHistory = [];
+    }
+    order.statusHistory.push({
+      status,
+      updatedBy: req.user.id,
+      updatedByName: req.user.name || "Vendor",
+      timestamp: new Date(),
+    });
+
+    await order.save();
+
+    console.log(`✅ Order ${orderId} status updated to "${status}" by vendor ${req.user.id}`);
+
+    res.json({
+      success: true,
+      message: `Order status updated to "${status}"`,
+      order: {
+        _id: order._id,
+        orderStatus: order.orderStatus,
+        statusUpdatedAt: order.statusUpdatedAt,
+        statusHistory: order.statusHistory,
+      },
+    });
+  } catch (err) {
+    console.error("Update order status error:", err);
+    res.status(500).json({
+      success: false,
+      message: err.message || "Failed to update order status",
+    });
+  }
+});
+
+// ============================================================
 // GET VENDOR EARNINGS WITH PLAN-BASED COMMISSION
 // ============================================================
 router.get("/my-earnings", auth, async (req, res) => {
   try {
     const commissionRate = await getCommissionRate(req.user.id);
-    
+
     const orders = await Order.find({ orderStatus: "Delivered" })
       .populate({
         path: "items.productId",

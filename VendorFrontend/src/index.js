@@ -25,6 +25,10 @@ import Notification from './pages/Notification/Notification';
 import Review from './pages/Review/Review';
 import Settings from './pages/Settings/Settings';
 import DocumentSubmitted from "./pages/PublicDocumentUpload/DocumentSubmitted";
+
+// 🆕 Password Reset Page
+import ResetPassword from './pages/ResetPassword/ResetPassword';
+
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <Router basename="/">
@@ -32,7 +36,10 @@ root.render(
       {/* Auth Routes */}
       <Route path="/" element={<Login />} />
       <Route path="/VendorRegister" element={<VendorRegister />} />
-      
+
+      {/* 🆕 Password Reset Route */}
+      <Route path="/reset-password/:token" element={<ResetPassword />} />
+
       {/* Main Routes (Require Auth) */}
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/product" element={<Product />} />
@@ -40,20 +47,17 @@ root.render(
       <Route path="/order" element={<Order />} />
       <Route path="/delivery" element={<Delivery />} />
       <Route path="/customer" element={<Customer />} />
-      
+
       {/* NEW ROUTES */}
       <Route path="/coupon" element={<Coupon />} />
       <Route path="/notification" element={<Notification />} />
       <Route path="/review" element={<Review />} />
       <Route path="/settings" element={<Settings />} />
-      
+
       {/* ✅ Public Document Upload Route - NO AUTH REQUIRED */}
-      {/* URL format: /document-upload/DOC-ABC123DEF456 */}
       <Route path="/document-upload/:trackingId" element={<PublicDocumentUpload />} />
-      <Route
-  path="/document-submitted"
-  element={<DocumentSubmitted />}
-/>
+      <Route path="/document-submitted" element={<DocumentSubmitted />} />
+
       {/* Payment (Commented) */}
       {/* <Route path="/payment" element={<Payment />} /> */}
     </Routes>

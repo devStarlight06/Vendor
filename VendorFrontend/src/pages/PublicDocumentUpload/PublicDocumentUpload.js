@@ -1,4 +1,5 @@
-// pages/PublicDocumentUpload/PublicDocumentUpload.js
+// pages/PublicDocumentUpload/PublicDocumentUpload.js - WITH MOBILE-FRIENDLY MULTIPLE CATEGORY SELECTION
+
 import React, { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
@@ -41,16 +42,18 @@ import {
   FaExclamationTriangle,
   FaImage,
   FaInfoCircle,
+  FaGlobe,
+  FaTag,
+  FaSearch,
 } from "react-icons/fa";
 import axios from "axios";
 import "./publicDocumentUpload.css";
 
-// ================= API CONFIGURATION WITH CORS FIX =================
-// const API_URL = "https://api-vendor.native91.com/api/seller";
-// const API_BASE = "https://api-vendor.native91.com";
+// ================= API CONFIGURATION =================
 const API_URL = "http://localhost:5177/api/seller";
 const API_BASE = "http://localhost:5177";
-
+// const API_URL = "https://api-vendor.native91.com/api/seller";
+// const API_BASE = "https://api-vendor.native91.com";
 // Create axios instance with CORS support
 const axiosInstance = axios.create({
   baseURL: API_URL,
@@ -110,11 +113,19 @@ const PublicDocumentUpload = () => {
   const [fullName, setFullName] = useState("");
   const [currentStep, setCurrentStep] = useState(1);
   const [progress, setProgress] = useState(0);
+  const [categories, setCategories] = useState([]);
+  const [loadingCategories, setLoadingCategories] = useState(false);
+  const [categorySearch, setCategorySearch] = useState("");
+  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
 
   const [formData, setFormData] = useState({
-    // ✅ Logo + Brand Description (Description is REQUIRED)
+    // ✅ Brand Information Fields - Multiple Categories
+    categories: [],
+    category: "",
+    businessName: "",
+    website: "",
     logo: { image: "" },
-    brand: { description: "" }, // ✅ REQUIRED field
+    brand: { description: "" },
     aadhaar: { number: "", frontImage: "", backImage: "" },
     pan: { number: "", image: "" },
     gst: { number: "", certificate: "" },
@@ -144,6 +155,34 @@ const PublicDocumentUpload = () => {
   });
 
   const autoSaveTimer = useRef(null);
+  const dropdownRef = useRef(null);
+
+  // ================= FETCH CATEGORIES =================
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        setLoadingCategories(true);
+        const res = await axios.get(`http://localhost:7001/api/category/categories`);
+        console.log("📦 Categories API response:", res.data);
+        
+        if (res.data && res.data.success && Array.isArray(res.data.categories)) {
+          setCategories(res.data.categories);
+          console.log(`✅ Loaded ${res.data.categories.length} categories`);
+        } else if (res.data && Array.isArray(res.data)) {
+          setCategories(res.data);
+          console.log(`✅ Loaded ${res.data.length} categories`);
+        } else {
+          console.warn("⚠️ Unexpected categories response format:", res.data);
+          setCategories([]);
+        }
+      } catch (err) {
+        console.error("❌ Error fetching categories:", err);
+      } finally {
+        setLoadingCategories(false);
+      }
+    };
+    fetchCategories();
+  }, []);
 
   // ================= FETCH DOCUMENTS BY TRACKING ID =================
   useEffect(() => {
@@ -167,7 +206,10 @@ const PublicDocumentUpload = () => {
           setLastSaved(doc.lastSaved);
 
           setFormData({
-            // ✅ Load logo and brand description
+            categories: doc.categories || [],
+            category: doc.category || "",
+            businessName: doc.businessName || doc.company || "",
+            website: doc.website || "",
             logo: doc.logo || { image: "" },
             brand: doc.brand || { description: "" },
             aadhaar: doc.aadhaar || { number: "", frontImage: "", backImage: "" },
@@ -211,13 +253,28 @@ const PublicDocumentUpload = () => {
     fetchDocument();
   }, [trackingId]);
 
+  // ================= CLOSE DROPDOWN ON OUTSIDE CLICK =================
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setShowCategoryDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
   // ================= CALCULATE PROGRESS =================
   useEffect(() => {
     let filled = 0;
     let total = 0;
 
     const fields = [
-      formData.brand.description, // ✅ Brand description added to progress
+      formData.businessName,
+      formData.categories.length > 0 ? "categories" : "",
+      formData.brand.description,
       formData.aadhaar.number,
       formData.aadhaar.frontImage,
       formData.aadhaar.backImage,
@@ -241,32 +298,72 @@ const PublicDocumentUpload = () => {
   }, [formData]);
 
   // ================= AUTO-SAVE =================
-  const autoSave = async () => {
-    if (saving || documentStatus === 'verified' || documentStatus === 'submitted') return;
+ // ================= AUTO-SAVE =================
+const autoSave = async () => {
+  if (saving || documentStatus === 'verified' || documentStatus === 'submitted') return;
 
-    try {
-      setSaving(true);
-      const res = await axiosInstance.post(
-        `/documents/save`,
-        { trackingId, ...formData },
-        {
-          headers: { "Content-Type": "application/json" },
-        }
-      );
+  try {
+    setSaving(true);
+    
+    // ✅ Properly structure the save data with businessName
+    const saveData = {
+      trackingId,
+      categories: formData.categories || [],
+      category: formData.categories && formData.categories.length > 0 ? formData.categories[0] : "",
+      businessName: formData.businessName || "", // ✅ Ensure businessName is included
+      website: formData.website || "",
+      logo: formData.logo || { image: "" },
+      brand: formData.brand || { description: "" },
+      aadhaar: formData.aadhaar || { number: "", frontImage: "", backImage: "" },
+      pan: formData.pan || { number: "", image: "" },
+      gst: formData.gst || { number: "", certificate: "" },
+      bank: formData.bank || {
+        accountHolderName: "",
+        accountNumber: "",
+        confirmAccountNumber: "",
+        ifscCode: "",
+        bankName: "",
+        branchName: "",
+        upiId: "",
+      },
+      contact: formData.contact || {
+        phone: "",
+        alternatePhone: "",
+        address: "",
+        city: "",
+        state: "",
+        pincode: "",
+        country: "India",
+      },
+      business: formData.business || {
+        registrationType: "",
+        registrationNumber: "",
+        certificate: "",
+      },
+    };
 
-      if (res.data.success) {
-        setLastSaved(new Date());
-        setDocumentStatus(res.data.document.status);
-        setSuccess("Auto-saved successfully");
-        setTimeout(() => setSuccess(""), 3000);
+    console.log("📝 Auto-saving data:", saveData);
+
+    const res = await axiosInstance.post(
+      `/documents/save`,
+      saveData,
+      {
+        headers: { "Content-Type": "application/json" },
       }
-    } catch (err) {
-      console.error("Auto-save error:", err);
-      // Don't show error to user for auto-save failures
-    } finally {
-      setSaving(false);
+    );
+
+    if (res.data.success) {
+      setLastSaved(new Date());
+      setDocumentStatus(res.data.document.status);
+      setSuccess("Auto-saved successfully");
+      setTimeout(() => setSuccess(""), 3000);
     }
-  };
+  } catch (err) {
+    console.error("Auto-save error:", err);
+  } finally {
+    setSaving(false);
+  }
+};
 
   // Auto-save on field change with debounce
   const handleFieldChange = (section, field, value) => {
@@ -287,7 +384,67 @@ const PublicDocumentUpload = () => {
     }, 2000);
   };
 
-  // ================= FILE UPLOAD WITH CORS FIX =================
+  // ✅ Handle top-level field changes
+  const handleTopLevelChange = (field, value) => {
+    setFormData((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+
+    if (autoSaveTimer.current) {
+      clearTimeout(autoSaveTimer.current);
+    }
+
+    autoSaveTimer.current = setTimeout(() => {
+      autoSave();
+    }, 2000);
+  };
+
+  // ✅ Toggle category selection (mobile-friendly)
+  const toggleCategory = (categoryName) => {
+    setFormData(prev => {
+      const currentCategories = prev.categories || [];
+      let newCategories;
+      
+      if (currentCategories.includes(categoryName)) {
+        newCategories = currentCategories.filter(c => c !== categoryName);
+      } else {
+        newCategories = [...currentCategories, categoryName];
+      }
+      
+      return {
+        ...prev,
+        categories: newCategories
+      };
+    });
+
+    // Auto-save after selection
+    if (autoSaveTimer.current) {
+      clearTimeout(autoSaveTimer.current);
+    }
+    autoSaveTimer.current = setTimeout(() => {
+      autoSave();
+    }, 500);
+  };
+
+  // ✅ Remove a category from selection
+  const removeCategory = (categoryToRemove) => {
+    setFormData(prev => ({
+      ...prev,
+      categories: prev.categories.filter(c => c !== categoryToRemove)
+    }));
+    autoSave();
+  };
+
+  // ✅ Get filtered categories for search
+  const getFilteredCategories = () => {
+    if (!categorySearch.trim()) return categories;
+    return categories.filter(cat => 
+      cat.name.toLowerCase().includes(categorySearch.toLowerCase())
+    );
+  };
+
+  // ================= FILE UPLOAD =================
   const handleFileUpload = async (section, field, file) => {
     if (!file) return;
 
@@ -340,11 +497,9 @@ const PublicDocumentUpload = () => {
       }
     } catch (err) {
       console.error("Upload error:", err);
-      
-      // Enhanced error message for CORS issues
       let errorMessage = "Failed to upload file. ";
       if (err.message === "Network Error") {
-        errorMessage += "Please check your image size ";
+        errorMessage += "Please check your connection.";
       } else if (err.response?.data?.message) {
         errorMessage += err.response.data.message;
       } else {
@@ -370,88 +525,126 @@ const PublicDocumentUpload = () => {
     setTimeout(() => setSuccess(""), 3000);
   };
 
-  // ================= SUBMIT DOCUMENTS WITH NAVIGATION =================
-  const handleSubmit = async () => {
-    const required = [
-      { section: 'brand', field: 'description', label: 'Brand Description' },
-      { section: 'aadhaar', field: 'number', label: 'Aadhaar Number' },
-      { section: 'aadhaar', field: 'frontImage', label: 'Aadhaar Front Image' },
-      { section: 'aadhaar', field: 'backImage', label: 'Aadhaar Back Image' },
-      { section: 'pan', field: 'number', label: 'PAN Number' },
-      { section: 'pan', field: 'image', label: 'PAN Card Image' },
-      { section: 'bank', field: 'accountHolderName', label: 'Account Holder Name' },
-      { section: 'bank', field: 'accountNumber', label: 'Bank Account Number' },
-      { section: 'bank', field: 'ifscCode', label: 'IFSC Code' },
-      { section: 'bank', field: 'bankName', label: 'Bank Name' },
-      { section: 'contact', field: 'phone', label: 'Phone Number' },
-      { section: 'contact', field: 'address', label: 'Address' },
-      { section: 'business', field: 'registrationType', label: 'Business Type' },
-    ];
+// ================= SUBMIT DOCUMENTS =================
+const handleSubmit = async () => {
+  // ✅ Validate categories
+  if (!formData.categories || formData.categories.length === 0) {
+    setError("Please select at least one brand category.");
+    return;
+  }
 
-    const missing = [];
-    for (const req of required) {
-      if (!formData[req.section][req.field]) {
-        missing.push(req.label);
-      }
+  // ✅ REMOVED: Business name validation
+  // if (!formData.businessName || formData.businessName.trim().length < 2) {
+  //   setError("Please enter your brand/business name.");
+  //   return;
+  // }
+
+  // Check brand description length
+  if (formData.brand.description.length < 20) {
+    setError("Brand description must be at least 20 characters.");
+    return;
+  }
+  if (formData.brand.description.length > 1500) {
+    setError("Brand description cannot exceed 1500 characters.");
+    return;
+  }
+
+  const required = [
+    { section: 'brand', field: 'description', label: 'Brand Description' },
+    { section: 'aadhaar', field: 'number', label: 'Aadhaar Number' },
+    { section: 'aadhaar', field: 'frontImage', label: 'Aadhaar Front Image' },
+    { section: 'aadhaar', field: 'backImage', label: 'Aadhaar Back Image' },
+    { section: 'pan', field: 'number', label: 'PAN Number' },
+    { section: 'pan', field: 'image', label: 'PAN Card Image' },
+    { section: 'bank', field: 'accountHolderName', label: 'Account Holder Name' },
+    { section: 'bank', field: 'accountNumber', label: 'Bank Account Number' },
+    { section: 'bank', field: 'ifscCode', label: 'IFSC Code' },
+    { section: 'bank', field: 'bankName', label: 'Bank Name' },
+    { section: 'contact', field: 'phone', label: 'Phone Number' },
+    { section: 'contact', field: 'address', label: 'Address' },
+    { section: 'business', field: 'registrationType', label: 'Business Type' },
+  ];
+
+  const missing = [];
+  for (const req of required) {
+    if (!formData[req.section][req.field]) {
+      missing.push(req.label);
     }
+  }
 
-    if (missing.length > 0) {
-      setError(`Please fill all required fields: ${missing.join(', ')}`);
-      return;
-    }
+  if (missing.length > 0) {
+    setError(`Please fill all required fields: ${missing.join(', ')}`);
+    return;
+  }
 
-    if (formData.bank.accountNumber !== formData.bank.confirmAccountNumber) {
-      setError("Bank account numbers do not match");
-      return;
-    }
+  if (formData.bank.accountNumber !== formData.bank.confirmAccountNumber) {
+    setError("Bank account numbers do not match");
+    return;
+  }
 
-    if (!window.confirm("Are you sure you want to submit these documents for verification?")) {
-      return;
-    }
+  if (!window.confirm("Are you sure you want to submit these documents for verification?")) {
+    return;
+  }
 
-    setSubmitting(true);
-    setError("");
+  setSubmitting(true);
+  setError("");
 
-    try {
-      const res = await axiosInstance.post(
-        `/documents/submit`,
-        { trackingId },
-        { headers: { "Content-Type": "application/json" } }
-      );
+  try {
+    const res = await axiosInstance.post(
+      `/documents/submit`,
+      { trackingId },
+      { headers: { "Content-Type": "application/json" } }
+    );
 
-      if (res.data.success) {
-        setDocumentStatus('submitted');
-        setSuccess("✅ Documents submitted successfully for verification!");
-        
-        // Navigate to success page after 2 seconds
-        setTimeout(() => {
-          navigate('/document-submitted');
-        }, 2000);
-      }
-    } catch (err) {
-      console.error("Submit error:", err);
+    if (res.data.success) {
+      setDocumentStatus('submitted');
+      setSuccess("✅ Documents submitted successfully for verification!");
       
-      let errorMessage = "Failed to submit documents. ";
-      if (err.response?.data?.message) {
-        errorMessage += err.response.data.message;
-      } else if (err.message === "Network Error") {
-        errorMessage += "Network error. Please check your connection.";
-      } else {
-        errorMessage += "Please try again.";
-      }
-      setError(errorMessage);
-    } finally {
-      setSubmitting(false);
+      setTimeout(() => {
+        navigate('/document-submitted');
+      }, 2000);
     }
-  };
+  } catch (err) {
+    console.error("Submit error:", err);
+    let errorMessage = "Failed to submit documents. ";
+    if (err.response?.data?.message) {
+      errorMessage += err.response.data.message;
+    } else if (err.message === "Network Error") {
+      errorMessage += "Network error. Please check your connection.";
+    } else {
+      errorMessage += "Please try again.";
+    }
+    setError(errorMessage);
+  } finally {
+    setSubmitting(false);
+  }
+};
 
-  // ================= NAVIGATION =================
-  const nextStep = () => {
-    if (currentStep < 7) {
-      setCurrentStep(currentStep + 1);
-      window.scrollTo({ top: 0, behavior: "smooth" });
+// ================= NAVIGATION =================
+const nextStep = () => {
+  if (currentStep === 2) {
+    // ✅ Validate categories
+    if (!formData.categories || formData.categories.length === 0) {
+      setError("Please select at least one brand category.");
+      return;
     }
-  };
+  
+    if (formData.brand.description.length < 20) {
+      setError("Brand description must be at least 20 characters.");
+      return;
+    }
+    if (formData.brand.description.length > 1500) {
+      setError("Brand description cannot exceed 1500 characters.");
+      return;
+    }
+  }
+
+  if (currentStep < 7) {
+    setCurrentStep(currentStep + 1);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+};
+  // ================= NAVIGATION =================
 
   const prevStep = () => {
     if (currentStep > 1) {
@@ -479,7 +672,6 @@ const PublicDocumentUpload = () => {
     if (!url) return null;
 
     const fileName = url.split('/').pop();
-    const fileSize = Math.round(Math.random() * 500 + 100);
 
     return (
       <div className={`file-preview ${isLogo ? 'logo-preview' : ''}`}>
@@ -490,7 +682,6 @@ const PublicDocumentUpload = () => {
         )}
         <div className="file-info">
           <div className="file-name">{fileName}</div>
-          <div className="file-size">{fileSize} KB</div>
         </div>
         <div className="file-actions">
           <button
@@ -569,54 +760,87 @@ const PublicDocumentUpload = () => {
       <h5 className="step-title">
         <FaUserCircle className="me-2 text-primary" /> Personal Information
       </h5>
-      <p className="text-muted mb-4">Please confirm your personal details</p>
+      <p className="text-muted mb-4">Please provide your personal details</p>
 
       <Row>
+        {/* ✅ First Name - EDITABLE */}
         <Col md={6}>
           <Form.Group className="mb-3">
             <Form.Label>First Name <span className="required">*</span></Form.Label>
             <Form.Control
               type="text"
               placeholder="Enter your first name"
-              value={fullName?.split(' ')[0] || ""}
-              disabled
-              className="bg-light"
+              value={formData.firstName || fullName?.split(' ')[0] || ""}
+              onChange={(e) => handleTopLevelChange('firstName', e.target.value)}
+              disabled={documentStatus === 'verified' || documentStatus === 'submitted'}
             />
+            <Form.Text className="text-muted">
+              As per your Aadhaar card
+            </Form.Text>
           </Form.Group>
         </Col>
+
+        {/* ✅ Last Name - EDITABLE */}
         <Col md={6}>
           <Form.Group className="mb-3">
             <Form.Label>Last Name <span className="required">*</span></Form.Label>
             <Form.Control
               type="text"
               placeholder="Enter your last name"
-              value={fullName?.split(' ').slice(1).join(' ') || ""}
-              disabled
-              className="bg-light"
+              value={formData.lastName || fullName?.split(' ').slice(1).join(' ') || ""}
+              onChange={(e) => handleTopLevelChange('lastName', e.target.value)}
+              disabled={documentStatus === 'verified' || documentStatus === 'submitted'}
             />
+            <Form.Text className="text-muted">
+              As per your Aadhaar card
+            </Form.Text>
           </Form.Group>
         </Col>
+
+        {/* ✅ Email - EDITABLE */}
         <Col md={6}>
           <Form.Group className="mb-3">
             <Form.Label>Email Address <span className="required">*</span></Form.Label>
             <Form.Control
               type="email"
               placeholder="your@email.com"
-              value={email}
-              disabled
-              className="bg-light"
+              value={formData.email || email || ""}
+              onChange={(e) => handleTopLevelChange('email', e.target.value)}
+              disabled={documentStatus === 'verified' || documentStatus === 'submitted'}
             />
+            <Form.Text className="text-muted">
+              We'll send verification updates here
+            </Form.Text>
           </Form.Group>
         </Col>
+
+        {/* ✅ Company / Business Name - EDITABLE */}
         <Col md={6}>
           <Form.Group className="mb-3">
             <Form.Label>Company / Business Name <span className="required">*</span></Form.Label>
             <Form.Control
               type="text"
               placeholder="Enter your company name"
-              value={company}
-              disabled
-              className="bg-light"
+              value={formData.company || company || ""}
+              onChange={(e) => handleTopLevelChange('company', e.target.value)}
+              disabled={documentStatus === 'verified' || documentStatus === 'submitted'}
+            />
+            <Form.Text className="text-muted">
+              Your registered business name
+            </Form.Text>
+          </Form.Group>
+        </Col>
+
+        {/* ✅ Phone (Optional - naya field) */}
+        <Col md={6}>
+          <Form.Group className="mb-3">
+            <Form.Label>Phone Number <span className="text-muted">(Optional)</span></Form.Label>
+            <Form.Control
+              type="tel"
+              placeholder="Enter phone number"
+              value={formData.phone || ""}
+              onChange={(e) => handleTopLevelChange('phone', e.target.value)}
+              disabled={documentStatus === 'verified' || documentStatus === 'submitted'}
             />
           </Form.Group>
         </Col>
@@ -630,92 +854,268 @@ const PublicDocumentUpload = () => {
     </div>
   );
 
-  // ================= STEP 2: BRAND INFORMATION =================
-  const renderStep2 = () => (
-    <div className="step-content">
-      <h5 className="step-title">
-        <FaStore className="me-2 text-primary" /> Brand Information
-      </h5>
-      <Alert variant="info" className="mb-4">
-        <small>
-          <strong>📝 Important:</strong> Brand description is required. Logo is optional but recommended.
-        </small>
-      </Alert>
+  // ================= STEP 2: BRAND INFORMATION (MOBILE-FRIENDLY MULTI-SELECT) =================
+  const renderStep2 = () => {
+    const filteredCategories = getFilteredCategories();
+    const selectedCount = formData.categories?.length || 0;
 
-      <Row>
-        <Col md={12}>
-          <Form.Group className="mb-4">
-            <Form.Label>
-              <FaInfoCircle className="me-2" /> Brand Description <span className="required">*</span>
-            </Form.Label>
-            <Form.Control
-              as="textarea"
-              rows={4}
-              placeholder="Tell us about your brand, what products you offer, your mission, and what makes you unique..."
-              value={formData.brand.description}
-              onChange={(e) => handleFieldChange('brand', 'description', e.target.value)}
-              disabled={documentStatus === 'verified' || documentStatus === 'submitted'}
-              className="brand-description-textarea"
-              isInvalid={!formData.brand.description && formData.brand.description !== ''}
-            />
-            <Form.Text className="text-muted">
-              Minimum 20 characters. Maximum 500 characters.
-            </Form.Text>
-            <div className="text-end text-muted small mt-1">
-              {formData.brand.description.length}/500 characters
-              {formData.brand.description.length > 0 && formData.brand.description.length < 20 && (
-                <span className="text-warning ms-2">(Min 20 characters)</span>
+    return (
+      <div className="step-content">
+        <h5 className="step-title">
+          <FaStore className="me-2 text-primary" /> Brand Information
+        </h5>
+        <Alert variant="info" className="mb-4">
+          <small>
+            <strong>📝 Important:</strong> Please provide your brand details. 
+            You can select multiple categories for your brand.
+          </small>
+        </Alert>
+
+        <Row>
+          {/* ✅ Mobile-Friendly Category Selection */}
+          <Col md={12}>
+            <Form.Group className="mb-3">
+              <Form.Label>
+                <FaTag className="me-2" /> Brand Categories <span className="required">*</span>
+                <Badge bg="secondary" className="ms-2">
+                  {selectedCount} selected
+                </Badge>
+              </Form.Label>
+              
+              {/* Selected Categories Badges */}
+              {formData.categories && formData.categories.length > 0 && (
+                <div className="mb-3 d-flex flex-wrap gap-2">
+                  {formData.categories.map((cat, index) => (
+                    <Badge 
+                      key={index} 
+                      bg="primary" 
+                      className="rounded-pill px-3 py-2 d-flex align-items-center gap-2"
+                      style={{ fontSize: '14px' }}
+                    >
+                      {cat}
+                      <span 
+                        className="ms-1" 
+                        style={{ cursor: 'pointer', fontSize: '16px' }}
+                        onClick={() => removeCategory(cat)}
+                      >
+                        ✕
+                      </span>
+                    </Badge>
+                  ))}
+                </div>
               )}
-              {formData.brand.description.length >= 20 && (
-                <span className="text-success ms-2">✓</span>
-              )}
-            </div>
-            {formData.brand.description && formData.brand.description.length < 20 && (
-              <Form.Text className="text-warning">
-                Please enter at least 20 characters.
+
+              {/* Search Input */}
+              <div className="category-search-wrapper" ref={dropdownRef}>
+                <div className="input-group">
+                  <span className="input-group-text bg-white">
+                    <FaSearch className="text-muted" />
+                  </span>
+                  <Form.Control
+                    type="text"
+                    placeholder={loadingCategories ? "Loading categories..." : "Search categories..."}
+                    value={categorySearch}
+                    onChange={(e) => {
+                      setCategorySearch(e.target.value);
+                      setShowCategoryDropdown(true);
+                    }}
+                    onFocus={() => setShowCategoryDropdown(true)}
+                    disabled={loadingCategories || documentStatus === 'verified' || documentStatus === 'submitted'}
+                    className="category-search-input"
+                  />
+                  {categorySearch && (
+                    <Button
+                      variant="outline-secondary"
+                      className="border-start-0"
+                      onClick={() => setCategorySearch("")}
+                    >
+                      ✕
+                    </Button>
+                  )}
+                </div>
+
+                {/* Category Dropdown */}
+                {showCategoryDropdown && !loadingCategories && (
+                  <div className="category-dropdown">
+                    {filteredCategories.length === 0 ? (
+                      <div className="dropdown-item text-muted text-center py-3">
+                        {categorySearch ? "No categories found" : "No categories available"}
+                      </div>
+                    ) : (
+                      filteredCategories.map((cat) => {
+                        const isSelected = formData.categories?.includes(cat.name) || false;
+                        return (
+                          <div
+                            key={cat._id}
+                            className={`dropdown-item category-item ${isSelected ? 'selected' : ''}`}
+                            onClick={() => toggleCategory(cat.name)}
+                            style={{ cursor: 'pointer' }}
+                          >
+                            <div className="d-flex align-items-center justify-content-between">
+                              <span>{cat.name}</span>
+                              {isSelected ? (
+                                <FaCheck className="text-success" />
+                              ) : (
+                                <span className="text-muted small">+ Add</span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+
+                {loadingCategories && (
+                  <div className="text-center py-3">
+                    <Spinner size="sm" /> Loading categories...
+                  </div>
+                )}
+              </div>
+
+              <Form.Text className="text-muted">
+                Click on a category to select/deselect. You can select multiple categories.
               </Form.Text>
-            )}
-          </Form.Group>
-        </Col>
+              
+              {(!formData.categories || formData.categories.length === 0) && (
+                <Form.Text className="text-warning d-block mt-2">
+                  ⚠️ Please select at least one category
+                </Form.Text>
+              )}
+            </Form.Group>
+          </Col>
 
-        <Col md={12}>
-          <Form.Group className="mb-3">
-            <Form.Label>
-              <FaImage className="me-2" /> Company Logo <span className="text-muted">(Optional)</span>
-            </Form.Label>
-            <div className="file-input-wrapper">
+          {/* ✅ Business Name */}
+          <Col md={12}>
+            <Form.Group className="mb-3">
+              <Form.Label>
+                <FaStore className="me-2" /> Brand / Business Name <span className="required">*</span>
+              </Form.Label>
               <Form.Control
-                type="file"
-                accept="image/*"
-                onChange={(e) => handleFileUpload('logo', 'image', e.target.files[0])}
+                type="text"
+                placeholder="Enter your brand/business name (e.g., 'Nayna Studios')"
+                value={formData.businessName || ""}
+                onChange={(e) => handleTopLevelChange('businessName', e.target.value)}
+                disabled={documentStatus === 'verified' || documentStatus === 'submitted'}
+                className={!formData.businessName ? "border-warning" : ""}
+              />
+              <Form.Text className="text-muted">
+                This will be displayed as your brand name on the platform.
+              </Form.Text>
+              {!formData.businessName && (
+                <Form.Text className="text-warning d-block">
+                  ⚠️ Please enter your brand name
+                </Form.Text>
+              )}
+            </Form.Group>
+          </Col>
+
+          {/* ✅ Website */}
+          <Col md={12}>
+            <Form.Group className="mb-3">
+              <Form.Label>
+                <FaGlobe className="me-2" /> Website / Social Media <span className="text-muted">(Optional)</span>
+              </Form.Label>
+              <Form.Control
+                type="text"
+                placeholder="Enter your website or social media URL (e.g., www.yourbrand.com)"
+                value={formData.website || ""}
+                onChange={(e) => handleTopLevelChange('website', e.target.value)}
                 disabled={documentStatus === 'verified' || documentStatus === 'submitted'}
               />
-            </div>
-            <Form.Text className="text-muted">
-              Upload a square image (recommended: 500x500px). JPG, PNG, WEBP formats accepted.
-              Max 5MB.
-            </Form.Text>
-            <FilePreview
-              url={formData.logo.image}
-              onView={() => window.open(`${API_BASE}${formData.logo.image}`, '_blank')}
-              onRemove={() => handleRemoveFile('logo', 'image')}
-              isDisabled={documentStatus === 'verified' || documentStatus === 'submitted'}
-              isLogo={true}
-            />
-          </Form.Group>
-        </Col>
-      </Row>
+              <Form.Text className="text-muted">
+                Add your website or Instagram/Facebook page link.
+              </Form.Text>
+            </Form.Group>
+          </Col>
 
-      <div className="d-flex justify-content-between mt-3">
-        <Button variant="secondary" onClick={prevStep}>
-          <FaArrowLeft className="me-2" /> Previous
-        </Button>
-        <Button variant="primary" onClick={nextStep}>
-          Next Step <FaArrowRight className="ms-2" />
-        </Button>
+          {/* ✅ Brand Description */}
+          <Col md={12}>
+            <Form.Group className="mb-4">
+              <Form.Label>
+                <FaInfoCircle className="me-2" /> Brand Description <span className="required">*</span>
+              </Form.Label>
+              <Form.Control
+                as="textarea"
+                rows={6}
+                placeholder="Tell us about your brand, what products you offer, your mission, and what makes you unique..."
+                value={formData.brand.description}
+                onChange={(e) => handleFieldChange('brand', 'description', e.target.value)}
+                disabled={documentStatus === 'verified' || documentStatus === 'submitted'}
+                className="brand-description-textarea"
+                isInvalid={
+                  (formData.brand.description.length > 0 && formData.brand.description.length < 20) ||
+                  formData.brand.description.length > 1500
+                }
+              />
+              <Form.Text className="text-muted">
+                Minimum 20 characters. Maximum 1500 characters.
+              </Form.Text>
+              <div className="text-end text-muted small mt-1">
+                {formData.brand.description.length}/1500 characters
+                {formData.brand.description.length > 0 && formData.brand.description.length < 20 && (
+                  <span className="text-warning ms-2">(Min 20 characters)</span>
+                )}
+                {formData.brand.description.length >= 20 && formData.brand.description.length <= 1500 && (
+                  <span className="text-success ms-2">✓</span>
+                )}
+                {formData.brand.description.length > 1500 && (
+                  <span className="text-danger ms-2">(Exceeds limit!)</span>
+                )}
+              </div>
+              {formData.brand.description && formData.brand.description.length < 20 && (
+                <Form.Text className="text-warning">
+                  Please enter at least 20 characters.
+                </Form.Text>
+              )}
+              {formData.brand.description && formData.brand.description.length > 1500 && (
+                <Form.Text className="text-danger">
+                  Description exceeds 1500 characters limit.
+                </Form.Text>
+              )}
+            </Form.Group>
+          </Col>
+
+          {/* ✅ Logo Upload */}
+          <Col md={12}>
+            <Form.Group className="mb-3">
+              <Form.Label>
+                <FaImage className="me-2" /> Company Logo <span className="text-muted">(Optional)</span>
+              </Form.Label>
+              <div className="file-input-wrapper">
+                <Form.Control
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => handleFileUpload('logo', 'image', e.target.files[0])}
+                  disabled={documentStatus === 'verified' || documentStatus === 'submitted'}
+                />
+              </div>
+              <Form.Text className="text-muted">
+                Upload a square image (recommended: 500x500px). JPG, PNG, WEBP formats accepted.
+                Max 5MB.
+              </Form.Text>
+              <FilePreview
+                url={formData.logo.image}
+                onView={() => window.open(`${API_BASE}${formData.logo.image}`, '_blank')}
+                onRemove={() => handleRemoveFile('logo', 'image')}
+                isDisabled={documentStatus === 'verified' || documentStatus === 'submitted'}
+                isLogo={true}
+              />
+            </Form.Group>
+          </Col>
+        </Row>
+
+        <div className="d-flex justify-content-between mt-3">
+          <Button variant="secondary" onClick={prevStep}>
+            <FaArrowLeft className="me-2" /> Previous
+          </Button>
+          <Button variant="primary" onClick={nextStep}>
+            Next Step <FaArrowRight className="ms-2" />
+          </Button>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   // ================= STEP 3: AADHAAR DETAILS =================
   const renderStep3 = () => (
@@ -1310,6 +1710,8 @@ const PublicDocumentUpload = () => {
         <div className="help-text">
           <p><span className="text-danger">*</span> Required fields. Documents are auto-saved every 2 seconds.</p>
           <p>Supported file types: JPEG, PNG, GIF, WEBP, PDF (Max 10MB)</p>
+          <p>Brand description: Minimum 20 characters, Maximum 1500 characters.</p>
+          <p>Click on categories to select/deselect. You can select multiple categories.</p>
         </div>
       </Container>
     </section>

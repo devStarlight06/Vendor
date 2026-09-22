@@ -832,7 +832,127 @@ const sendDocumentResubmissionEmail = async (email, company, documentName, track
     return { success: false, error: error.message };
   }
 };
+const sendPasswordResetEmail = async (email, name, resetToken) => {
+  try {
+    console.log(`📧 Sending password reset email to: ${email}`);
 
+    const transporter = createTransporter();
+
+    if (!transporter) {
+      return { success: false, error: "Email not configured" };
+    }
+
+    const currentYear = new Date().getFullYear();
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+    const resetLink = `${frontendUrl}/reset-password/${resetToken}`;
+
+    const htmlContent = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Password Reset - Native91</title>
+</head>
+<body style="margin:0; padding:0; background-color:#f5f4ef; font-family:Arial,Helvetica,sans-serif; color:#26332d;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f5f4ef; padding:30px 0;">
+    <tr>
+      <td align="center">
+        <table width="560" cellpadding="0" cellspacing="0" border="0" style="background-color:#ffffff; border-radius:8px; overflow:hidden; max-width:560px; width:100%;">
+          <tr>
+            <td style="background-color:#063f31; padding:25px 30px; text-align:center;">
+              <div style="color:#e4ce94; font-family:Georgia,'Times New Roman',serif; font-size:30px; letter-spacing:5px;">NATIVE91</div>
+              <div style="color:#d8c28a; font-size:9px; letter-spacing:2px; margin-top:5px;">RESERVED FOR THE REMARKABLE</div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:30px 30px 20px;">
+              <div style="text-align:center; padding-bottom:10px;">
+                <div style="width:60px; height:60px; line-height:60px; margin:0 auto; border-radius:50%; background-color:#f8f1df; color:#0b3f32; font-size:26px; text-align:center;">🔐</div>
+              </div>
+              <h1 style="text-align:center; color:#0a392e; font-family:Georgia,'Times New Roman',serif; font-size:28px; font-weight:normal; margin:5px 0 10px;">Password Reset Request</h1>
+              <div style="text-align:center; margin:5px 0 20px;">
+                <span style="display:inline-block; width:40px; height:1px; background-color:#cdb47c;"></span>
+                <span style="display:inline-block; margin:0 10px; color:#b08e50; font-size:16px;">❧</span>
+                <span style="display:inline-block; width:40px; height:1px; background-color:#cdb47c;"></span>
+              </div>
+
+              <p style="font-size:16px; color:#242a26; margin:0 0 15px;">Hello <strong>${name || "Vendor"}</strong>,</p>
+              <p style="font-size:15px; line-height:1.6; color:#343936; margin:0 0 15px;">We received a request to reset the password for your Native91 vendor account.</p>
+              <p style="font-size:15px; line-height:1.6; color:#343936; margin:0 0 15px;">Click the button below to create a new password. This link is valid for <strong>1 hour</strong>.</p>
+
+              <div style="text-align:center; margin:25px 0;">
+                <a href="${resetLink}" style="display:inline-block; background-color:#073f31; color:#ffffff; padding:13px 35px; border-radius:5px; font-size:14px; font-weight:bold; text-decoration:none; letter-spacing:0.4px;">
+                  RESET PASSWORD →
+                </a>
+              </div>
+
+              <div style="background-color:#f8f4e8; border-left:4px solid #e8ad22; border-radius:6px; padding:14px 18px; margin:20px 0;">
+                <div style="font-size:12px; color:#856404; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">⏱ Link expires in 1 hour</div>
+                <div style="font-size:13px; color:#4a4a4a; line-height:1.5;">If the button doesn't work, copy this link into your browser:</div>
+                <div style="font-size:12px; color:#0b3f32; word-break:break-all; margin-top:6px;">
+                  <a href="${resetLink}" style="color:#0b3f32; text-decoration:underline;">${resetLink}</a>
+                </div>
+              </div>
+
+              <div style="border:1px solid #e6e1d7; border-radius:6px; padding:12px 15px; margin:20px 0;">
+                <div style="text-align:center;">
+                  <div style="font-family:Georgia,'Times New Roman',serif; font-size:14px; font-weight:bold; color:#1d3c32; margin-bottom:5px;">🔒 SECURITY NOTICE</div>
+                  <div style="font-size:12px; color:#454a46; line-height:1.6;">
+                    If you didn't request this password reset, please ignore this email.<br/>
+                    Your password will remain unchanged.
+                  </div>
+                </div>
+              </div>
+
+              <div style="padding:5px 0; margin-top:15px;">
+                <p style="font-size:14px; color:#333936; margin:0;">Warm regards,</p>
+                <p style="font-size:15px; font-weight:bold; color:#1d2f28; margin:5px 0;">Team Native91</p>
+                <p style="font-size:13px; color:#a6813e; font-style:italic; margin:0;">Reserved for the Remarkable.</p>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td style="border-top:1px solid #ddd8cd; text-align:center; padding:15px 20px 20px; background-color:#ffffff;">
+              <div style="color:#999b96; font-size:10px; font-style:italic; margin-bottom:10px;">This is an automated email. Please do not reply to this message.</div>
+              <div style="color:#999b96; font-size:10px;">© ${currentYear} Native91. All rights reserved.</div>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+    const mailOptions = {
+      from: `"Native91" <${process.env.EMAIL_FROM || process.env.SMTP_USER}>`,
+      to: email,
+      subject: "Password Reset Request — Native91 Vendor Portal",
+      html: htmlContent,
+      headers: {
+        "X-Priority": "1",
+        "X-MSMail-Priority": "High",
+        "Importance": "high",
+      },
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`✅ Password reset email sent to: ${email}`);
+
+    return {
+      success: true,
+      messageId: info.messageId,
+      link: resetLink,
+    };
+  } catch (error) {
+    console.error("❌ Password reset email error:", error.message);
+    return {
+      success: false,
+      error: error.message,
+      link: `${process.env.FRONTEND_URL || "http://localhost:5173"}/reset-password/${resetToken}`,
+    };
+  }
+};
 // ============================================================
 // EXPORT ALL FUNCTIONS
 // ============================================================
@@ -842,5 +962,6 @@ module.exports = {
   sendRejectionEmail,
   sendVendorCreationEmail,
   sendDocumentRejectionEmail,
-  sendDocumentResubmissionEmail
+  sendDocumentResubmissionEmail,
+  sendPasswordResetEmail,
 };
